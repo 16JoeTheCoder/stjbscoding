@@ -55,6 +55,7 @@ function signInScreen(message = "") {
       <button class="jy-btn jy-btn--accent" @click=${signIn}>Sign in with Google</button>
       <p class="muted">Use your @${SCHOOL_DOMAIN} school account.</p>
       ${message ? html`<div class="notice notice--bad" role="alert"><span class="jy-badge jy-badge--bad">Problem</span> ${message}</div>` : ""}
+      ${devSignIn ? devSignIn() : ""}
     </main>`, app);
 }
 
@@ -103,9 +104,19 @@ if (configMissing) {
   });
 }
 
-// Used by the end-to-end tests to sign in against the local emulator without a popup.
+// LOCAL EMULATORS ONLY: sign in by typing an email, without the Google popup.
+// Used by `npm run dev` with the emulators and by the end-to-end tests. Vite removes all of
+// this from production builds, and scripts/check-dist.js fails the build if it is ever left in.
+const devSignIn = import.meta.env.VITE_USE_EMULATORS === "true"
+  ? () => html`
+    <form class="form" @submit=${(e) => { e.preventDefault(); window.__signInForTest(new FormData(e.target).get("email")); }}>
+      <label class="jy-field"><span class="jy-field__label">Emulator only: sign in as</span>
+        <input class="jy-field__input" name="email" type="email" placeholder="tara.teacher@stjbs.sch.id" /></label>
+      <div><button class="jy-btn jy-btn--ghost" type="submit">Sign in with this email</button></div>
+    </form>`
+  : null;
 if (import.meta.env.VITE_USE_EMULATORS === "true") {
-  window.__signInForTest = async (email, name) => {
+  window.__signInForTest = async (email, name = email.split("@")[0]) => {
     const { signInWithCredential } = await import("firebase/auth");
     const token = JSON.stringify({ sub: email, email, email_verified: true, name });
     await signInWithCredential(auth, GoogleAuthProvider.credential(token));

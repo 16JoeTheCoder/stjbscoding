@@ -49,3 +49,23 @@ Every choice that shapes this repo, with what was considered and what it costs. 
 **D20. Curriculum versions are whole documents; the frozen-level check runs in the admin's browser.** Alternative: enforce "frozen levels never change" in rules (would mean deep-comparing nested maps across documents, unreadable). Reason: only admins can write curriculum (rules enforce that), admins are faculty, and the admin page refuses any upload that changes a frozen level. Pins on classes can only grow, which rules do enforce. Tradeoff: a determined admin using the console can bypass the frozen check; that is accepted for trusted faculty.
 
 **D21. Join codes are separate documents (`joinCodes/{code}`).** Students can `get` a code they type but cannot list codes or read classes they have not joined. The member request must quote a code that points at that class. Codes are 6 characters from a 32-letter alphabet without look-alikes (no I, O, 0, 1), about a billion combinations.
+
+## Sign-in and features
+
+**D22. Google sign-in uses the popup flow.** Alternative: redirect flow. Reason: the site (on Cloudflare) and the Firebase auth domain (`<project>.firebaseapp.com`) differ, and the redirect flow breaks in browsers that block third-party storage in that situation. Consequence: the `_headers` file must not send `Cross-Origin-Opener-Policy: same-origin` (it would cut the popup off from the page); it sends `same-origin-allow-popups`.
+
+**D23. The UI hides links a role cannot use, but never relies on that.** Every page also works out what to show from data the rules let it read. A student who types an admin URL gets "not available for your role"; one who types another class's URL gets "You do not have access".
+
+**D24. Weekly project options come from the curriculum.** A teacher posts a project by picking a topic; its `projects` list becomes the options. If a topic has none, the teacher writes one brief. Alternative: free-form options per project. Reason: one source of truth, less typing for student teachers. Tradeoff: to offer a new project idea for every class, add it to the curriculum (a new version, or a later level).
+
+**D25. "Needs help" creates at most one open request per student per project.** Saving again while a request is open updates the submission (the teacher's "Open their work" link always shows the latest code) instead of adding a duplicate to the queue. The student can close their own request ("I solved it").
+
+**D26. Pace votes are for the most recent submitted session only.** The class document carries `lastSubmittedSession`; the student home shows the question until they answer. Students cannot read attendance documents (they contain everyone's marks), so this field is how they learn a session happened.
+
+**D27. Curriculum versions are cached in memory for one visit.** A version document can be large (the whole curriculum) and almost never changes, so `data.js` keeps each one it has fetched until the tab is closed. This is a `Map`, not a caching layer; errata applied by the admin are seen on the next visit.
+
+**D28. Settings constants live in `src/config.js`.** Run timeout (5 s), pace threshold (5, also written in `firestore.rules`), stale-help days (3), export warning days (14). Alternative: an admin-editable settings document. Reason: these rarely change, and a code change is reviewed and recorded; a settings document would need its own rules and UI.
+
+**D29. End-to-end tests drive the real build in Chromium against the emulators.** Sign-in in tests uses `signInWithCredential` with the emulator's unsigned test tokens through a hook (`window.__signInForTest`) that exists only when `VITE_USE_EMULATORS=true`; `scripts/check-dist.js` fails the production build if the hook is present. Tests serve the build with the real `_headers`, so a CSP mistake that would break Python or Firebase fails the tests.
+
+**D30. No theme toggle.** The app follows the device's light or dark setting, as the design system says working surfaces should. A toggle would need storage and code for no real gain.
