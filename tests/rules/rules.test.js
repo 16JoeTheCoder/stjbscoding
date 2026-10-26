@@ -7,8 +7,10 @@ import {
 } from "@firebase/rules-unit-testing";
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where,
-  writeBatch, increment, arrayUnion,
+  writeBatch, increment, arrayUnion, serverTimestamp,
 } from "firebase/firestore";
+
+const NOW = serverTimestamp();   // rules require server time on every timestamp a user writes
 
 let env;
 const C = "class1";   // Python class taught by teacher T1, student S1 approved, S2 pending
@@ -66,7 +68,7 @@ beforeEach(async () => {
     await setDoc(doc(f, "config/curriculum"), { latest: 1, maxVersion: 1 });
     await setDoc(doc(f, "config/export"), { lastExportAt: 1, by: "admin" });
     await setDoc(doc(f, "curriculumVersions/1"), { version: 1, data: { tracks: [] }, notes: "", publishedAt: 1, publishedBy: "admin", errata: [] });
-    await setDoc(doc(f, "classes", C), classData("Python A", ["t1"], "ABCDEF"));
+    await setDoc(doc(f, "classes", C), { ...classData("Python A", ["t1"], "ABCDEF"), lastSubmittedSession: "2026-07-14" });
     await setDoc(doc(f, "classes", C2), classData("Python B", ["t2"], "GHJKLM"));
     await setDoc(doc(f, "joinCodes/ABCDEF"), { classId: C, className: "Python A" });
     await setDoc(doc(f, "joinCodes/GHJKLM"), { classId: C2, className: "Python B" });
@@ -92,7 +94,7 @@ test("denies unauthenticated users everything", async () => {
 
 test("denies non-school Google accounts that are not on the allowlist", async () => {
   const outsider = env.authenticatedContext("out", token("someone@gmail.com")).firestore();
-  await assertFails(setDoc(doc(outsider, "users/out"), { email: "someone@gmail.com", name: "x", role: "student", classIds: [], createdAt: 1 }));
+  await assertFails(setDoc(doc(outsider, "users/out"), { email: "someone@gmail.com", name: "x", role: "student", classIds: [], createdAt: NOW }));
   await assertFails(getDoc(doc(outsider, "config/curriculum")));
   await assertFails(getDoc(doc(outsider, "joinCodes/ABCDEF")));
 });
@@ -100,7 +102,7 @@ test("denies non-school Google accounts that are not on the allowlist", async ()
 test("denies look-alike domains", async () => {
   for (const email of ["x@stjbs.sch.id.evil.com", "x@evilstjbs.sch.id", "x@stjbsxsch.id"]) {
     const f = env.authenticatedContext("u", token(email)).firestore();
-    await assertFails(setDoc(doc(f, "users/u"), { email, name: "x", role: "student", classIds: [], createdAt: 1 }));
+    await assertFails(setDoc(doc(f, "users/u"), { email, name: "x", role: "student", classIds: [], createdAt: NOW }));
   }
 });
 
@@ -119,7 +121,7 @@ test("allows the allowlisted club account (non-school email)", async () => {
 
 test("a new school user can create only their own student profile", async () => {
   const f = env.authenticatedContext("new", token("new@stjbs.sch.id")).firestore();
-  const base = { email: "new@stjbs.sch.id", name: "New", classIds: [], createdAt: 1 };
+  const base = { email: "new@stjbs.sch.id", name: "New", classIds: [], createdAt: NOW };
   await assertFails(setDoc(doc(f, "users/new"), { ...base, role: "admin" }));
   await assertFails(setDoc(doc(f, "users/new"), { ...base, role: "teacher" }));
   await assertFails(setDoc(doc(f, "users/other"), { ...base, role: "student" }));
@@ -216,7 +218,7 @@ test("classes: only admins create; teachers change only their allowed fields; pi
   await assertSucceeds(setDoc(doc(db.admin, "classes/new"), classData("x", ["t1"], "QQQQQQ")));
   await assertSucceeds(updateDoc(doc(db.t1, "classes", C), { pointer: { levelId: "py-l2", topicId: "x" }, "pins.py-l2": 1 }));
   await assertFails(updateDoc(doc(db.t1, "classes", C), { "pins.py-l1": 2 }));
-  await assertFails(updateDoc(doc(db.admin, "classes", C), { "pins.py-l1": 2 }));
+  await assertSucceeds(updateDoc(doc(db.admin, "classes", C), { "pins.py-l1": 2 }));   // admins may correct a pin (trusted, DECISIONS D20)
   await assertFails(updateDoc(doc(db.t1, "classes", C), { teacherIds: ["t1", "s1"] }));
   await assertFails(updateDoc(doc(db.t2, "classes", C), { defaultPresent: false }));
   await assertFails(updateDoc(doc(db.s1, "classes", C), { defaultPresent: false }));
@@ -226,7 +228,7 @@ test("classes: only admins create; teachers change only their allowed fields; pi
 // ---------- Members ----------
 
 test("joining: a student may request with a valid code for that class only", async () => {
-  const req = (code) => ({ uid: "s3", name: "s3", email: people.s3.email, code, className: "Python A", status: "pending", requestedAt: 1 });
+  const req = (code) => ({ uid: "s3", name: "s3", email: people.s3.email, code, className: "Python A", status: "pending", requestedAt: NOW });
   await assertFails(setDoc(doc(db.s3, `classes/${C}/members/s3`), req("GHJKLM")));   // code of another class
   await assertFails(setDoc(doc(db.s3, `classes/${C}/members/s3`), { ...req("ABCDEF"), status: "approved" }));
   await assertFails(setDoc(doc(db.s3, `classes/${C}/members/s1`), req("ABCDEF")));
@@ -236,7 +238,7 @@ test("joining: a student may request with a valid code for that class only", asy
 test("joining: a student cannot approve themselves; the class teacher can", async () => {
   await assertFails(updateDoc(doc(db.s2, `classes/${C}/members/s2`), { status: "approved" }));
   await assertFails(updateDoc(doc(db.t2, `classes/${C}/members/s2`), { status: "approved" }));
-  await assertSucceeds(updateDoc(doc(db.t1, `classes/${C}/members/s2`), { status: "approved", decidedAt: 1, decidedBy: "t1" }));
+  await assertSucceeds(updateDoc(doc(db.t1, `classes/${C}/members/s2`), { status: "approved", decidedAt: NOW, decidedBy: "t1" }));
   await assertFails(updateDoc(doc(db.t1, `classes/${C}/members/s2`), { name: "renamed" }));
   await assertFails(deleteDoc(doc(db.t1, `classes/${C}/members/s2`)));
 });
@@ -257,13 +259,13 @@ test("projects: approved members and class teachers read; only class teachers wr
   await assertFails(getDocs(collection(db.s2, `classes/${C}/projects`)));
   await assertFails(getDocs(collection(db.s3, `classes/${C}/projects`)));
   await assertFails(getDocs(collection(db.t2, `classes/${C}/projects`)));
-  const p = { title: "Week 2", week: "2026-07-20", topicId: "t", options: [{ id: "a", title: "A" }], createdAt: 1, createdBy: "t1", deleted: false };
+  const p = { title: "Week 2", week: "2026-07-20", topicId: "t", options: [{ id: "a", title: "A" }], createdAt: NOW, createdBy: "t1", deleted: false };
   await assertFails(setDoc(doc(db.s1, `classes/${C}/projects/p2`), p));
   await assertFails(setDoc(doc(db.admin, `classes/${C}/projects/p2`), p));
   await assertSucceeds(setDoc(doc(db.t1, `classes/${C}/projects/p2`), p));
 });
 
-const sub = (uid, extra = {}) => ({ uid, name: uid, projectId: "p1", optionId: "a", code: "print(2)", scratchUrl: "", status: "done", lastError: "", updatedAt: 2, ...extra });
+const sub = (uid, extra = {}) => ({ uid, name: uid, projectId: "p1", optionId: "a", code: "print(2)", scratchUrl: "", status: "done", lastError: "", updatedAt: NOW, ...extra });
 
 test("submissions: a student writes only their own, in a class they belong to", async () => {
   await assertSucceeds(setDoc(doc(db.s1, `classes/${C}/submissions/s1_p1`), sub("s1")));
@@ -289,7 +291,7 @@ test("submissions: a student cannot read another student's work", async () => {
 
 // ---------- Help requests ----------
 
-const help = (uid, extra = {}) => ({ uid, name: uid, projectId: "p1", projectTitle: "Week 1", code: "x", scratchUrl: "", error: "NameError", note: "", status: "open", createdAt: 2, ...extra });
+const help = (uid, extra = {}) => ({ uid, name: uid, projectId: "p1", projectTitle: "Week 1", code: "x", scratchUrl: "", error: "NameError", note: "", status: "open", createdAt: NOW, ...extra });
 
 test("help: approved students create their own open request only", async () => {
   await assertSucceeds(setDoc(doc(db.s1, `classes/${C}/help/h2`), help("s1")));
@@ -308,26 +310,28 @@ test("help: students read only their own; teachers only their class queue", asyn
 });
 
 test("help: only the class teacher answers; the student may only close", async () => {
-  const answer = { status: "answered", answer: "Check line 3", answeredBy: "t1", answeredByName: "t1", answeredAt: 3 };
+  const answer = { status: "answered", answer: "Check line 3", answeredBy: "t1", answeredByName: "t1", answeredAt: NOW };
   await assertFails(updateDoc(doc(db.s1, `classes/${C}/help/h1`), answer));
   await assertFails(updateDoc(doc(db.t2, `classes/${C}/help/h1`), { ...answer, answeredBy: "t2" }));
   await assertFails(updateDoc(doc(db.admin, `classes/${C}/help/h1`), { ...answer, answeredBy: "admin" }));
   await assertFails(updateDoc(doc(db.t1, `classes/${C}/help/h1`), { ...answer, answeredBy: "someone" }));
   await assertSucceeds(updateDoc(doc(db.t1, `classes/${C}/help/h1`), answer));
-  await assertFails(updateDoc(doc(db.s1, `classes/${C}/help/h1`), { status: "closed", closedAt: 4 }));   // no longer open
+  await assertFails(updateDoc(doc(db.s1, `classes/${C}/help/h1`), { status: "closed", closedAt: NOW }));   // no longer open
 });
 
 test("help: student can close their own open request", async () => {
-  await assertSucceeds(updateDoc(doc(db.s1, `classes/${C}/help/h1`), { status: "closed", closedAt: 4 }));
+  await assertSucceeds(updateDoc(doc(db.s1, `classes/${C}/help/h1`), { status: "closed", closedAt: NOW }));
 });
 
 // ---------- Attendance ----------
 
 function sessionBatch(f, date, rev, extra = {}) {
-  const s = { date, status: "submitted", marks: { s1: "absent" }, rev, deleted: false, updatedAt: 2, updatedBy: "t1", ...extra };
+  const { closeVoting, ...fields } = extra;
+  const s = { date, status: "submitted", marks: { s1: "absent" }, rev, deleted: false, updatedAt: NOW, updatedBy: "t1", ...fields };
   const b = writeBatch(f);
   b.set(doc(f, `classes/${C}/sessions/${date}`), s);
-  b.set(doc(f, `classes/${C}/sessions/${date}/history/${rev}`), { rev, at: 2, by: s.updatedBy, byName: "t1", status: s.status, marks: s.marks, deleted: s.deleted });
+  b.set(doc(f, `classes/${C}/sessions/${date}/history/${rev}`), { rev, at: NOW, by: s.updatedBy, byName: s.updatedBy, status: s.status, marks: s.marks, deleted: s.deleted });
+  if (closeVoting) b.update(doc(f, "classes", C), { lastSubmittedSession: date });
   return b;
 }
 
@@ -337,7 +341,7 @@ test("attendance: the class teacher submits with a history entry", async () => {
 });
 
 test("attendance: denies writes without history, wrong rev, or by others", async () => {
-  await assertFails(setDoc(doc(db.t1, `classes/${C}/sessions/2026-07-28`), { date: "2026-07-28", status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: 2, updatedBy: "t1" }));
+  await assertFails(setDoc(doc(db.t1, `classes/${C}/sessions/2026-07-28`), { date: "2026-07-28", status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" }));
   await assertFails(sessionBatch(db.t1, "2026-07-14", 5).commit());
   await assertFails(sessionBatch(db.t1, "2026-07-14", 1).commit());
   await assertFails(sessionBatch(db.t2, "2026-07-21", 1, { updatedBy: "t2" }).commit());
@@ -355,8 +359,8 @@ test("attendance: history cannot be rewritten and sessions cannot be hard-delete
 test("attendance: history entry must match the session it records", async () => {
   const t1 = db.t1;
   const b = writeBatch(t1);
-  b.set(doc(t1, `classes/${C}/sessions/2026-07-21`), { date: "2026-07-21", status: "submitted", marks: { s1: "absent" }, rev: 1, deleted: false, updatedAt: 2, updatedBy: "t1" });
-  b.set(doc(t1, `classes/${C}/sessions/2026-07-21/history/1`), { rev: 1, at: 2, by: "t1", byName: "t1", status: "submitted", marks: { s1: "present" }, deleted: false });
+  b.set(doc(t1, `classes/${C}/sessions/2026-07-21`), { date: "2026-07-21", status: "submitted", marks: { s1: "absent" }, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" });
+  b.set(doc(t1, `classes/${C}/sessions/2026-07-21/history/1`), { rev: 1, at: NOW, by: "t1", byName: "t1", status: "submitted", marks: { s1: "present" }, deleted: false });
   await assertFails(b.commit());
 });
 
@@ -425,10 +429,14 @@ test("pace: nobody can see who voted, and totals stay hidden below 5 responses",
   await assertSucceeds(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14/voters/s1`)));   // "you voted"
   await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14/voters/v0`)));
   await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14`)));
-  // fifth response: totals readable by the class teacher and admin, never by other teachers or students
+  // fifth response: still hidden while voting is open, so nobody can watch single votes arrive
   await vote(voter(3), "v3", "2026-07-14", "hard", true);
+  await assertFails(getDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`)));
+  await assertFails(getDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
+  // the next session is submitted: voting on 07-14 closes, totals become readable to the class teacher and admin
+  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 1, { closeVoting: true }).commit());
+  await assertFails(vote(voter(4), "v4", "2026-07-14", "easy", true));   // closed
   await assertSucceeds(getDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`)));
-  await assertSucceeds(getDocs(query(collection(db.t1, `classes/${C}/pace`), where("n", ">=", 5))));
   await assertFails(getDocs(collection(db.t1, `classes/${C}/pace`)));
   await assertSucceeds(getDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
   await assertFails(getDoc(doc(db.t2, `classes/${C}/pace/2026-07-14`)));
@@ -440,4 +448,44 @@ test("pace: teachers cannot vote or reset totals", async () => {
   await vote(db.s1, "s1", "2026-07-14", "easy", false);
   await assertFails(setDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`), { easy: 0, right: 0, hard: 0, n: 0 }));
   await assertFails(deleteDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
+});
+
+// ---------- Findings from the independent checker (CHECKS.md) ----------
+
+test("timestamps must be server time: no back-dated help requests", async () => {
+  await assertFails(setDoc(doc(db.s1, `classes/${C}/help/old`), help("s1", { createdAt: new Date("2020-01-01") })));
+  await assertFails(setDoc(doc(db.s1, `classes/${C}/submissions/s1_p1`), sub("s1", { updatedAt: new Date("2020-01-01") })));
+  await assertFails(updateDoc(doc(db.t1, `classes/${C}/help/h1`), { status: "answered", answer: "x", answeredBy: "t1", answeredByName: "t1", answeredAt: new Date("2020-01-01") }));
+});
+
+test("names in answers and history must be the writer's own", async () => {
+  await assertFails(updateDoc(doc(db.t1, `classes/${C}/help/h1`), { status: "answered", answer: "x", answeredBy: "t1", answeredByName: "Mr Ariel", answeredAt: NOW }));
+  const t1 = db.t1;
+  const b = writeBatch(t1);
+  b.set(doc(t1, `classes/${C}/sessions/2026-07-21`), { date: "2026-07-21", status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" });
+  b.set(doc(t1, `classes/${C}/sessions/2026-07-21/history/1`), { rev: 1, at: NOW, by: "t1", byName: "Mr Ariel", status: "submitted", marks: {}, deleted: false });
+  await assertFails(b.commit());
+});
+
+test("attendance marks are only present or absent", async () => {
+  await assertFails(sessionBatch(db.t1, "2026-07-21", 1, { marks: { s1: "banana" } }).commit());
+});
+
+test("pace: no voting on an older session or a deleted one", async () => {
+  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 1, { closeVoting: true }).commit());
+  await assertFails(vote(db.s1, "s1", "2026-07-14", "easy", false));   // no longer the latest
+  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 2, { deleted: true }).commit());
+  await assertFails(vote(db.s1, "s1", "2026-07-21", "easy", false));   // deleted
+});
+
+test("teachers cannot pin arbitrary versions, set junk join codes, or move the pace window back", async () => {
+  await assertFails(updateDoc(doc(db.t1, "classes", C), { pointer: { levelId: "l9", topicId: "x" }, "pins.l9": 999 }));
+  await assertFails(updateDoc(doc(db.t1, "classes", C), { "pins.l9": 1 }));   // pin without moving the pointer there
+  await assertFails(updateDoc(doc(db.t1, "classes", C), { joinCode: "not a code" }));
+  await assertFails(updateDoc(doc(db.t1, "classes", C), { lastSubmittedSession: "2026-07-01" }));
+});
+
+test("a teacher cannot join their own class as a student", async () => {
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "joinCodes/ABCDEF"), { classId: C, className: "Python A" }));
+  await assertFails(setDoc(doc(db.t1, `classes/${C}/members/t1`), { uid: "t1", name: "t1", email: people.t1.email, code: "ABCDEF", className: "Python A", status: "pending", requestedAt: NOW }));
 });

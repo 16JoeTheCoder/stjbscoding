@@ -76,10 +76,11 @@ export const updateClass = (id, fields) => updateDoc(doc(db, "classes", id), fie
 // Teacher or admin: replace the join code (the old one stops working).
 export async function replaceJoinCode(cls) {
   const code = newJoinCode();
+  const old = (await getClass(cls.id)).joinCode;   // fresh: another tab may have changed it
   const b = writeBatch(db);
   b.update(doc(db, "classes", cls.id), { joinCode: code });
   b.set(doc(db, "joinCodes", code), { classId: cls.id, className: cls.name });
-  if (cls.joinCode) b.delete(doc(db, "joinCodes", cls.joinCode));
+  if (old) b.delete(doc(db, "joinCodes", old));
   await b.commit();
   return code;
 }
@@ -201,8 +202,8 @@ export async function hasVoted(cid, date, uid) {
 }
 
 // Student: one anonymous vote. choice: "easy" | "right" | "hard".
-// The totals document is created by the first voter. If two students vote at the
-// same moment, one write fails; we retry once as an update.
+// Students cannot read the totals, so we cannot know whether this is the first vote:
+// try adding to existing totals, and if there are none yet, create them.
 export async function vote(cid, date, uid, choice) {
   const pace = doc(db, `classes/${cid}/pace/${date}`);
   const voter = doc(db, `classes/${cid}/pace/${date}/voters/${uid}`);
@@ -217,8 +218,14 @@ export async function vote(cid, date, uid, choice) {
   try { await attempt(false); } catch { await attempt(true); }
 }
 
-// Teacher or admin: totals with enough responses to show.
-export const listPace = (cid) => many(query(col(`classes/${cid}/pace`), where("n", ">=", PACE_MIN_RESPONSES)));
+// Teacher or admin: totals for sessions whose voting has closed (a later session was
+// submitted) and that have enough answers. The rules refuse every other totals document,
+// so each one is fetched on its own and refusals are skipped.
+export async function listPace(cls, sessions) {
+  const dates = sessions.filter((s) => s.status === "submitted" && !s.deleted && s.date < (cls.lastSubmittedSession || "")).map((s) => s.date);
+  const found = await Promise.all(dates.map((d) => one(`classes/${cls.id}/pace/${d}`).catch(() => null)));
+  return found.filter((p) => p && p.n >= PACE_MIN_RESPONSES);
+}
 
 // ---------- Curriculum ----------
 

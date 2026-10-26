@@ -41,9 +41,7 @@ h3 { font: 700 18px/26px var(--font-sans); letter-spacing: -0.01em; }
 .prose p + p { margin-top: var(--space-3); }
 .stack > * + * { margin-top: var(--space-4); }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
-.row--end { justify-content: flex-end; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-5); align-items: start; }
-.stats { display: flex; flex-wrap: wrap; gap: var(--space-7); margin-bottom: var(--space-6); }
 .empty { padding: var(--space-4) 0; }
 .jy-panel .row { margin-top: var(--space-4); }
 .jy-panel > p + p, .jy-panel > .stack { margin-top: var(--space-2); }
@@ -83,7 +81,6 @@ legend { padding: 0; margin-bottom: var(--space-2); }
 .choice label:hover span { border-color: var(--ink); }
 .choice input:checked + span { background: var(--inverse); color: var(--on-inverse); border-color: var(--inverse); }
 .choice input:focus-visible + span { outline: var(--border-strong) solid var(--focus); outline-offset: 2px; }
-.choice--s span { min-height: 32px; padding: 0 var(--space-3); font-size: 13px; }
 
 /* Code box */
 .codebox { margin-top: var(--space-4); }
@@ -117,7 +114,6 @@ details > summary { cursor: pointer; min-height: var(--hit-min); display: flex; 
   main { padding: var(--space-5) var(--space-4) var(--space-8); }
   .title { font-size: 24px; line-height: 32px; }
   .signin__title { font-size: 44px; line-height: 48px; }
-  .stats { gap: var(--space-5); }
 }
 
 /* Spacing utilities on the 8px grid (tokens only) */
@@ -141,4 +137,4 @@ h3.sub { margin: var(--space-5) 0 var(--space-3); }
 .w-auto { width: auto; }
 .w-num { width: var(--space-9); }
 .file-input { padding-top: var(--space-3); }
-.code-big { font: 500 24px/32px var(--font-mono); letter-spacing: -0.01em; }
+.jy-panel p.code-big, .code-big { font: 500 24px/32px var(--font-mono); letter-spacing: -0.01em; }

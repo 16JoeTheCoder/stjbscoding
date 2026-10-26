@@ -51,7 +51,7 @@ async function studentClass(ctx, cls) {
       <ul class="list">${help.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)).map((h) => html`
         <li><div class="row">${badge(h.status === "open" ? "Waiting" : h.status === "answered" ? "Answered" : "Closed", h.status === "open" ? "warn" : "ok")} <b>${h.projectTitle}</b> <span class="muted small">${dateOf(h.createdAt)}</span></div>
         ${h.answer ? html`<p class="prose mt-2">${h.answeredByName}: ${h.answer}</p>` : nothing}
-        ${h.status === "open" ? html`<div class="row mt-2"><button class="jy-btn jy-btn--ghost jy-btn--s" @click=${(e) => busy(e, async () => { await data.closeHelp(cls.id, h.id); h.status = "closed"; ctx.rerender(); })}>I solved it</button></div>` : nothing}
+        ${h.status === "open" ? html`<div class="row mt-2"><button class="jy-btn jy-btn--ghost" @click=${(e) => busy(e, async () => { await data.closeHelp(cls.id, h.id); h.status = "closed"; ctx.rerender(); })}>I solved it</button></div>` : nothing}
         </li>`)}</ul>` : nothing}
 
     <h2 class="section">Curriculum</h2>
@@ -78,7 +78,7 @@ async function staffClass(ctx, cls, teaches) {
   const l = await classForStaff(cls);
   const cur = await classCurriculum(cls);
   const extra = {};
-  if (tab === "pace") extra.pace = await data.listPace(cls.id);
+  if (tab === "pace") extra.pace = await data.listPace(cls, l.sessions);
   if (tab === "projects") {
     extra.subs = await data.listSubmissions(cls.id);
   }
@@ -100,28 +100,28 @@ async function staffClass(ctx, cls, teaches) {
 const act = (page, fn) => (e) => busy(e, async () => { await fn(); page.ctx.reload(); },
   (msg) => { page.state.error = msg; page.ctx.rerender(); });
 
-function overview({ cls, l, cur, teaches, ctx }) {
+function overview(page) {
+  const { cls, l, cur, teaches } = page;
   const week = mondayOf(today());
   const proj = l.projects.find((p) => p.week === week);
   return html`
-    <div class="stats">
-      <div class="jy-stat"><span class="jy-stat__label">Students</span><span class="jy-stat__value">${l.approved.length}</span></div>
-      <div class="jy-stat"><span class="jy-stat__label">Help waiting</span><span class="jy-stat__value">${l.help.length}</span></div>
-      <div class="jy-stat"><span class="jy-stat__label">Topic</span><span class="jy-stat__value">${cur.at + 1}<span class="jy-stat__unit">of ${cur.topics.length}</span></span></div>
-    </div>
     <div class="grid">
+      <div class="jy-panel"><h3>Now</h3>
+        <p>${l.approved.length} students, ${l.pending.length} asking to join.</p>
+        <p>${l.help.length} waiting for help. ${l.missing.length} session(s) without attendance.</p>
+        <p>${cur.current ? `Topic ${cur.at + 1} of ${cur.topics.length}: ${cur.current.topic.title}.` : "No current topic set."}</p></div>
       <div class="jy-panel"><h3>Schedule</h3><p>${schedule(cls)}</p><p>Term ${cls.termStart} to ${cls.termEnd}</p>
         <p>Teachers: ${Object.values(cls.teacherNames || {}).join(", ") || "none"}</p></div>
       <div class="jy-panel"><h3>Join code</h3>
-        <p class="mono code-big">${cls.joinCode}</p>
+        <p class="code-big">${cls.joinCode}</p>
         <p>Students enter this code on the Join page. You approve each one in Roster.</p>
-        ${teaches ? html`<div class="row"><button class="jy-btn jy-btn--ghost jy-btn--s" @click=${act({ ctx, state: {} }, () => data.replaceJoinCode(cls))}>New code</button></div>` : nothing}
+        ${teaches ? html`<div class="row"><button class="jy-btn jy-btn--ghost" @click=${act(page, () => data.replaceJoinCode(cls))}>New code</button></div>` : nothing}
       </div>
       <div class="jy-panel"><h3>This week's project</h3>
         ${proj ? html`<p>${proj.title}</p>` : html`<p>None yet. ${teaches ? html`<a href="#/class/${cls.id}/projects">Post one</a>` : ""}</p>`}</div>
       <div class="jy-panel"><h3>Attendance default</h3>
         <p>Students start as <b>${cls.defaultPresent ? "present" : "absent"}</b>; you mark the exceptions.</p>
-        ${teaches ? html`<div class="row"><button class="jy-btn jy-btn--ghost jy-btn--s" @click=${act({ ctx, state: {} }, () => data.setDefaultPresent(cls.id, !cls.defaultPresent))}>Default to ${cls.defaultPresent ? "absent" : "present"}</button></div>` : nothing}
+        ${teaches ? html`<div class="row"><button class="jy-btn jy-btn--ghost" @click=${act(page, () => data.setDefaultPresent(cls.id, !cls.defaultPresent))}>Default to ${cls.defaultPresent ? "absent" : "present"}</button></div>` : nothing}
       </div>
     </div>`;
 }
@@ -137,18 +137,18 @@ function roster(page) {
     ${l.pending.length === 0 ? empty("No requests.") : html`
       <ul class="list">${l.pending.map((m) => html`
         <li class="row"><span class="grow"><b>${m.name}</b> <span class="muted small">${m.email}</span></span>
-          ${teaches ? html`<button class="jy-btn jy-btn--ghost jy-btn--s" @click=${decide(m, "approved")}>Approve</button>
-          <button class="jy-btn jy-btn--ghost jy-btn--s" @click=${decide(m, "rejected")}>Reject</button>` : nothing}
+          ${teaches ? html`<button class="jy-btn jy-btn--ghost" @click=${decide(m, "approved")}>Approve</button>
+          <button class="jy-btn jy-btn--ghost" @click=${decide(m, "rejected")}>Reject</button>` : nothing}
         </li>`)}</ul>`}
     <h2 class="section">Students (${l.approved.length})</h2>
     ${l.approved.length === 0 ? empty("Nobody yet.") : html`
       <ul class="list">${l.approved.map((m) => html`
         <li class="row"><span class="grow"><b>${m.name}</b> <span class="muted small">${m.email}</span></span>
-          ${teaches ? html`<button class="jy-btn jy-btn--ghost jy-btn--s" @click=${(e) => confirm(`Remove ${m.name} from ${cls.name}? Their work is kept.`) && decide(m, "removed")(e)}>Remove</button>` : nothing}
+          ${teaches ? html`<button class="jy-btn jy-btn--ghost" @click=${(e) => confirm(`Remove ${m.name} from ${cls.name}? Their work is kept.`) && decide(m, "removed")(e)}>Remove</button>` : nothing}
         </li>`)}</ul>`}
     ${others.length ? html`<h2 class="section">Rejected or removed</h2>
       <ul class="list">${others.map((m) => html`<li><b>${m.name}</b> <span class="muted small">${m.status}</span>
-        ${teaches ? html` <button class="jy-btn jy-btn--ghost jy-btn--s" @click=${decide(m, "approved")}>Re-admit</button>` : nothing}</li>`)}</ul>` : nothing}`;
+        ${teaches ? html` <button class="jy-btn jy-btn--ghost" @click=${decide(m, "approved")}>Re-admit</button>` : nothing}</li>`)}</ul>` : nothing}`;
 }
 
 // ----- Curriculum pointer -----
@@ -165,7 +165,7 @@ function curriculum(page) {
       <ul class="list">${level.topics.map((t) => html`
         <li class="row"><span class="grow"><a href="#/topic/${t.id}?class=${cls.id}">${t.title}</a></span>
           ${cls.pointer?.topicId === t.id ? badge("We are here", "ok")
-            : teaches ? html`<button class="jy-btn jy-btn--ghost jy-btn--s" @click=${act(page, () => data.setPointer(cls, level.id, t.id, cur.latest))}>We are here</button>` : nothing}
+            : teaches ? html`<button class="jy-btn jy-btn--ghost" @click=${act(page, () => data.setPointer(cls, level.id, t.id, cur.latest))}>We are here</button>` : nothing}
         </li>`)}</ul>`)}`;
 }
 
@@ -216,7 +216,7 @@ function projects(page) {
           return html`<tr><td class="mono">${p.week}</td><td><a href="#/class/${cls.id}/project/${p.id}">${p.title}</a></td>
             <td class="num">${statusCount(p.id, "done")}</td><td class="num">${statusCount(p.id, "in_progress")}</td>
             <td class="num">${statusCount(p.id, "needs_help")}</td><td class="num">${Math.max(0, l.approved.length - started)}</td>
-            ${teaches ? html`<td><button class="jy-btn jy-btn--ghost jy-btn--s" @click=${(e) => confirm(`Remove "${p.title}"? Student work is kept.`) && act(page, () => data.removeProject(cls.id, p.id))(e)}>Remove</button></td>` : nothing}</tr>`;
+            ${teaches ? html`<td><button class="jy-btn jy-btn--ghost" @click=${(e) => confirm(`Remove "${p.title}"? Student work is kept.`) && act(page, () => data.removeProject(cls.id, p.id))(e)}>Remove</button></td>` : nothing}</tr>`;
         })}</tbody>
       </table></div>`}`;
 }
@@ -228,7 +228,7 @@ function help(page) {
   const drafts = (page.drafts ??= {});
   if (l.help.length === 0) return empty("Nobody is waiting for help.");
   return html`
-    <p class="muted mb-4">Longest waiting first. <button class="jy-btn jy-btn--ghost jy-btn--s" @click=${() => ctx.reload()}>Refresh</button></p>
+    <p class="muted mb-4">Longest waiting first. <button class="jy-btn jy-btn--ghost" @click=${() => ctx.reload()}>Refresh</button></p>
     <ul class="list">${l.help.map((h) => html`
       <li class="stack">
         <div class="row">${badge(`Waiting ${ago(h.createdAt)}`, "warn")} <b>${h.name}</b> <span class="muted">${h.projectTitle}</span>
@@ -240,7 +240,7 @@ function help(page) {
         ${teaches ? html`
           <label class="jy-field narrow"><span class="jy-field__label">Answer</span>
             <textarea class="jy-field__input" .value=${drafts[h.id] || ""} @input=${(e) => { drafts[h.id] = e.target.value; }}></textarea></label>
-          <div><button class="jy-btn jy-btn--ghost jy-btn--s" @click=${act(page, async () => {
+          <div><button class="jy-btn jy-btn--ghost" @click=${act(page, async () => {
             const text = (drafts[h.id] || "").trim();
             if (!text) throw new Error("Write an answer first.");
             await data.answerHelp(cls.id, h.id, ctx.me, text);
@@ -255,18 +255,25 @@ function attendance(page) {
   const byDate = Object.fromEntries(l.sessions.map((s) => [s.date, s]));
   const a = (page.att ??= { date: l.missing[0] || "", marks: null, history: null });
 
+  // Editing a submitted session starts from exactly what was recorded, so students who have
+  // since left keep their mark. A new record starts everyone at the class default, except
+  // students approved after that date (they were not in the class yet; left blank).
+  const joinedBy = (m, date) => !m.decidedAt || dateOf(m.decidedAt) <= date;
   const fill = (date) => {
     const s = byDate[date];
-    const marks = {};
-    for (const m of l.approved) marks[m.uid] = s?.marks?.[m.uid] || (cls.defaultPresent ? "present" : "absent");
+    const recorded = s?.status === "submitted" ? s.marks || {} : null;
+    const marks = { ...(recorded || {}) };
+    if (!recorded) for (const m of l.approved) if (joinedBy(m, date)) marks[m.uid] = cls.defaultPresent ? "present" : "absent";
     Object.assign(a, { date, marks, history: null });
   };
+  const rows = () => l.members
+    .filter((m) => m.status === "approved" || a.marks[m.uid])
+    .sort((x, y) => x.name.localeCompare(y.name));
   const open = (date) => { fill(date); ctx.rerender(); };
   if (a.date && !a.marks) fill(a.date);
 
   const save = (status, deleted = false) => act(page, async () => {
     const prev = byDate[a.date];
-    // Keep marks only for current students; history keeps the full record.
     await data.saveSession(cls, a.date, ctx.me, { status, marks: status === "cancelled" ? {} : a.marks, deleted }, prev?.rev || 0);
     page.att = null;
   });
@@ -278,10 +285,10 @@ function attendance(page) {
       <div class="jy-panel mt-5">
         <h3>${formatDate(a.date)}${slot ? ` ${slot.start}` : ""}</h3>
         <p>${s ? html`${s.deleted ? "Deleted" : s.status === "cancelled" ? "Marked as no session" : "Submitted"} (edit ${s.rev}).` : `Not submitted. Everyone starts as ${cls.defaultPresent ? "present" : "absent"}; change the exceptions, then submit.`}</p>
-        ${l.approved.length === 0 ? empty("No students in this class.") : html`
-          <ul class="list mt-4">${l.approved.map((m) => html`
-            <li class="row"><span class="grow">${m.name}</span>
-              <span class="choice choice--s" role="radiogroup" aria-label=${`Attendance for ${m.name}`}>
+        ${rows().length === 0 ? empty("No students in this class.") : html`
+          <ul class="list mt-4">${rows().map((m) => html`
+            <li class="row"><span class="grow">${m.name}${m.status !== "approved" ? html` <span class="muted small">(no longer in the class)</span>` : nothing}${!a.marks[m.uid] ? html` <span class="muted small">(not recorded)</span>` : nothing}</span>
+              <span class="choice" role="radiogroup" aria-label=${`Attendance for ${m.name}`}>
                 ${["present", "absent"].map((v) => html`<label><input type="radio" name=${"att-" + m.uid} .checked=${a.marks[m.uid] === v} ?disabled=${!teaches}
                   @change=${() => { a.marks[m.uid] = v; ctx.rerender(); }} /><span>${v === "present" ? "Present" : "Absent"}</span></label>`)}
               </span></li>`)}</ul>`}
@@ -308,7 +315,7 @@ function attendance(page) {
         const st = !s || s.deleted ? badge("Not submitted", "bad") : s.status === "cancelled" ? badge("No session") : badge("Submitted", "ok");
         return html`<tr><td>${formatDate(d)}</td><td>${st}</td>
           <td class="num">${s && !s.deleted ? Object.values(s.marks || {}).filter((v) => v === "absent").length : ""}</td>
-          <td><button class="jy-btn jy-btn--ghost jy-btn--s" @click=${() => open(d)}>${teaches && (!s || s.deleted) ? "Take attendance" : "Open"}</button></td></tr>`;
+          <td><button class="jy-btn jy-btn--ghost" @click=${() => open(d)}>${teaches && (!s || s.deleted) ? "Take attendance" : "Open"}</button></td></tr>`;
       })}</tbody>
     </table></div>
     ${past.length === 0 ? empty("No sessions have happened yet this term.") : nothing}

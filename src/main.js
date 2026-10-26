@@ -3,7 +3,7 @@ import "./design/tokens.css";
 import "./design/bundle.css";
 import "./styles.css";
 import { render, html } from "lit-html";
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
+import { onAuthStateChanged, signInWithPopup, signInWithCredential, GoogleAuthProvider, signOut } from "firebase/auth";
 import { auth, configMissing } from "./firebase.js";
 import { getProfile, createProfile } from "./data.js";
 import { startRouter } from "./router.js";
@@ -117,7 +117,6 @@ const devSignIn = import.meta.env.VITE_USE_EMULATORS === "true"
   : null;
 if (import.meta.env.VITE_USE_EMULATORS === "true") {
   window.__signInForTest = async (email, name = email.split("@")[0]) => {
-    const { signInWithCredential } = await import("firebase/auth");
     const token = JSON.stringify({ sub: email, email, email_verified: true, name });
     await signInWithCredential(auth, GoogleAuthProvider.credential(token));
   };

@@ -287,6 +287,35 @@ test("the builtbyjosef logo appears only in the Settings credit", async () => {
   await ana.context().close();
 });
 
+test("a very long error still saves with Needs help", async () => {
+  const dewi = await as("s4");
+  await go(dewi, "/class/py1/project/w1");
+  await dewi.getByLabel(/Name card/).check();
+  await dewi.locator("textarea.code-input").first().fill('raise ValueError("x" * 5000)');
+  await dewi.getByRole("button", { name: "Run" }).click();
+  await dewi.locator(".output__error", { hasText: "ValueError" }).waitFor({ timeout: 90_000 });
+  await dewi.locator(".choice label", { hasText: "Needs help" }).click();
+  await dewi.getByRole("button", { name: "Save" }).click();
+  await dewi.getByText("Your teacher has your code and your last error").waitFor();
+  await dewi.context().close();
+});
+
+test("editing old attendance keeps a student who has since been removed", async () => {
+  const tara = await as("ta");
+  await go(tara, "/class/py1/roster");
+  await tara.locator("li", { hasText: "Eko Student" }).getByRole("button", { name: "Remove" }).click();
+  await tara.locator("h2", { hasText: "Rejected or removed" }).waitFor();
+  await go(tara, "/class/py1/attendance");
+  await tara.getByRole("button", { name: "Open" }).last().click();   // oldest submitted session
+  const eko = tara.locator("li", { hasText: "Eko Student" });
+  await eko.getByText("(no longer in the class)").waitFor();
+  await tara.getByRole("button", { name: "Save changes" }).click();
+  await tara.waitForFunction(() => !document.querySelector("[aria-label='Attendance for Eko Student']"));
+  await tara.getByRole("button", { name: "Open" }).last().click();
+  await tara.locator("li", { hasText: "Eko Student" }).waitFor();   // still recorded after the edit
+  await tara.context().close();
+});
+
 test("no console errors or CSP violations during the run", () => {
   assert.deepEqual(problems, []);
 });

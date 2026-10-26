@@ -76,9 +76,9 @@ export function codeBox(state, rerender, { title = "main.py", label = "Code", on
           <textarea class="code-input code-input--stdin" rows="2" .value=${live(state.stdin)} @input=${(e) => { state.stdin = e.target.value; }}></textarea>
         </label>` : nothing}
       <div class="codebox__actions">
-        <button class="jy-btn jy-btn--ghost jy-btn--s" data-run ?disabled=${!!state.status}
+        <button class="jy-btn jy-btn--ghost" data-run ?disabled=${!!state.status}
           @click=${async () => { const r = await run(state, rerender); onRun?.(r); }}>Run</button>
-        <button class="jy-btn jy-btn--ghost jy-btn--s" ?disabled=${!!state.status || state.code === state.original}
+        <button class="jy-btn jy-btn--ghost" ?disabled=${!!state.status || state.code === state.original}
           @click=${() => { state.code = state.original; state.output = ""; state.error = ""; rerender(); }}>Reset</button>
         ${state.status ? html`<span class="muted" role="status">${STATUS_TEXT[state.status]}</span>` : nothing}
       </div>

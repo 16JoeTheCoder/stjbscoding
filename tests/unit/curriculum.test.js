@@ -49,6 +49,17 @@ test("frozen levels: unchanged passes, changed or missing is rejected, unfrozen 
   assert.match(frozenProblems(removed, pins, { 1: v1 }).join(), /missing/);
 });
 
+test("rollback: a frozen level missing from the older version is allowed, a changed one is not", () => {
+  const v1 = sample();
+  const v2 = sample();
+  v2.tracks[0].levels.push({ id: "py-l4", title: "Level 4", topics: [{ id: "py-files", title: "Files" }] });
+  const pins = [{ className: "Python A", pins: { "py-l1": 2, "py-l4": 2 } }];
+  assert.deepEqual(frozenProblems(v1, pins, { 1: v1, 2: v2 }, { allowMissing: true }), []);
+  const v1changed = sample();
+  v1changed.tracks[0].levels[0].title = "Different";
+  assert.equal(frozenProblems(v1changed, pins, { 1: v1changed, 2: v2 }, { allowMissing: true }).length, 1);
+});
+
 test("errata: text fixes pass; code, ids and structure changes are rejected", () => {
   const old = sample();
   const fixed = sample();

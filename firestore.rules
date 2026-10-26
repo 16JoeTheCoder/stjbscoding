@@ -83,6 +83,16 @@ service cloud.firestore {
       return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
     }
 
+    // Timestamps must be the server's clock (serverTimestamp() in the app), so nobody
+    // can back-date a help request to jump the queue.
+    function isNow(v) {
+      return v == request.time;
+    }
+
+    function myName() {
+      return userDoc().data.name;
+    }
+
     // ---------- Users ----------
 
     match /users/{uid} {
@@ -96,7 +106,8 @@ service cloud.firestore {
         && request.resource.data.email == email()
         && isShortText(request.resource.data.name, 100)
         && request.resource.data.role == 'student'
-        && request.resource.data.classIds == [];
+        && request.resource.data.classIds == []
+        && isNow(request.resource.data.createdAt);
 
       // A user may change their display name and their own list of class shortcuts.
       // classIds is only a shortcut list: access to a class is decided by the member document.
@@ -171,10 +182,29 @@ service cloud.firestore {
         && d.pins is map;
     }
 
-    // Pins say which curriculum version a class saw for each level. Once set, a pin never changes.
-    function pinsOnlyGrow() {
-      return request.resource.data.pins.diff(resource.data.pins).changedKeys().size() == 0
-        && request.resource.data.pins.diff(resource.data.pins).removedKeys().size() == 0;
+    // Pins say which curriculum version a class saw for each level. A teacher can only add
+    // the pin for the level the pointer moves into, set to the latest version, and never
+    // change or remove one. (Admins may correct pins in the console; they are trusted.)
+    function teacherPinsOk() {
+      let before = resource.data.pins;
+      let after = request.resource.data.pins;
+      let added = after.diff(before).addedKeys();
+      return after.diff(before).changedKeys().size() == 0
+        && after.diff(before).removedKeys().size() == 0
+        && (added.size() == 0
+            || (added.hasOnly([request.resource.data.pointer.levelId])
+                && after[request.resource.data.pointer.levelId]
+                   == get(/databases/$(database)/documents/config/curriculum).data.latest));
+    }
+
+    // Fields a teacher may change on their class, each with its own limits.
+    function teacherClassEditOk() {
+      let d = request.resource.data;
+      return changed().hasOnly(['pointer', 'pins', 'defaultPresent', 'lastSubmittedSession', 'joinCode'])
+        && teacherPinsOk()
+        && d.joinCode.matches('^[A-HJ-NP-Z2-9]{6}$')
+        && (d.lastSubmittedSession == resource.data.lastSubmittedSession
+            || (isDate(d.lastSubmittedSession) && d.lastSubmittedSession > resource.data.lastSubmittedSession));
     }
 
     match /classes/{cid} {
@@ -182,10 +212,8 @@ service cloud.firestore {
       // Teachers may only list the classes they teach (query: teacherIds array-contains me).
       allow list: if isAdmin() || (isStaff() && request.auth.uid in resource.data.teacherIds);
       allow create: if isAdmin() && validClass(request.resource.data);
-      allow update: if validClass(request.resource.data) && pinsOnlyGrow()
-        && (isAdmin()
-            || (isTeacherOf(cid)
-                && changed().hasOnly(['pointer', 'pins', 'defaultPresent', 'lastSubmittedSession', 'joinCode'])));
+      allow update: if validClass(request.resource.data)
+        && (isAdmin() || (isTeacherOf(cid) && teacherClassEditOk()));
       allow delete: if false;
 
       // ----- Members: one document per student, id = student uid -----
@@ -195,6 +223,8 @@ service cloud.firestore {
 
         // A student asks to join with a valid join code for THIS class.
         allow create: if allowedUser() && hasProfile() && request.auth.uid == uid
+          && !(uid in classDoc(cid).data.teacherIds)
+          && isNow(request.resource.data.requestedAt)
           && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'code', 'className', 'status', 'requestedAt'])
           && request.resource.data.uid == uid
           && request.resource.data.email == email()
@@ -209,10 +239,13 @@ service cloud.firestore {
             && resource.data.status in ['rejected', 'removed']
             && changed().hasOnly(['status', 'code', 'requestedAt'])
             && request.resource.data.status == 'pending'
+            && isNow(request.resource.data.requestedAt)
             && get(/databases/$(database)/documents/joinCodes/$(request.resource.data.code)).data.classId == cid)
           || (isTeacherOf(cid)
             && changed().hasOnly(['status', 'decidedAt', 'decidedBy'])
-            && request.resource.data.status in ['approved', 'rejected', 'removed']);
+            && request.resource.data.status in ['approved', 'rejected', 'removed']
+            && request.resource.data.decidedBy == request.auth.uid
+            && isNow(request.resource.data.decidedAt));
 
         allow delete: if false;
       }
@@ -227,7 +260,9 @@ service cloud.firestore {
           && request.resource.data.options is list
           && request.resource.data.options.size() >= 1
           && request.resource.data.options.size() <= 8
-          && request.resource.data.deleted is bool;
+          && request.resource.data.deleted is bool
+          && request.resource.data.createdBy == (resource == null ? request.auth.uid : resource.data.createdBy)
+          && (resource != null || isNow(request.resource.data.createdAt));
         allow delete: if false;
       }
 
@@ -246,7 +281,8 @@ service cloud.firestore {
           && isShortText(d.code, 50000)
           && isShortText(d.lastError, 4000)
           && (d.scratchUrl == '' || d.scratchUrl.matches('^https://scratch[.]mit[.]edu/projects/[0-9]+/?$'))
-          && d.status in ['in_progress', 'done', 'needs_help'];
+          && d.status in ['in_progress', 'done', 'needs_help']
+          && isNow(d.updatedAt);
       }
 
       match /submissions/{sid} {
@@ -267,6 +303,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['uid', 'name', 'projectId', 'projectTitle', 'code', 'scratchUrl', 'error', 'note', 'status', 'createdAt'])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.status == 'open'
+          && isNow(request.resource.data.createdAt)
           && isShortText(request.resource.data.name, 100)
           && isShortText(request.resource.data.projectTitle, 120)
           && isShortText(request.resource.data.code, 50000)
@@ -282,11 +319,14 @@ service cloud.firestore {
             && request.resource.data.answer is string
             && request.resource.data.answer.size() > 0
             && request.resource.data.answer.size() <= 2000
-            && request.resource.data.answeredBy == request.auth.uid)
+            && request.resource.data.answeredBy == request.auth.uid
+            && request.resource.data.answeredByName == myName()
+            && isNow(request.resource.data.answeredAt))
           || (allowedUser() && resource.data.uid == request.auth.uid
             && resource.data.status == 'open'
             && changed().hasOnly(['status', 'closedAt'])
-            && request.resource.data.status == 'closed');
+            && request.resource.data.status == 'closed'
+            && isNow(request.resource.data.closedAt));
 
         allow delete: if false;
       }
@@ -299,6 +339,8 @@ service cloud.firestore {
           && d.date == date && isDate(date)
           && d.status in ['submitted', 'cancelled']
           && d.marks is map && d.marks.size() <= 60
+          && d.marks.values().hasOnly(['present', 'absent'])
+          && isNow(d.updatedAt)
           && d.deleted is bool
           && d.updatedBy == request.auth.uid
           && d.rev is int
@@ -319,6 +361,8 @@ service cloud.firestore {
           allow create: if isTeacherOf(cid)
             && request.resource.data.keys().hasOnly(['rev', 'at', 'by', 'byName', 'status', 'marks', 'deleted'])
             && request.resource.data.by == request.auth.uid
+            && request.resource.data.byName == myName()
+            && isNow(request.resource.data.at)
             && rev == string(request.resource.data.rev)
             && request.resource.data.rev == getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.rev
             && request.resource.data.marks == getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.marks
@@ -332,9 +376,20 @@ service cloud.firestore {
       // pace/<date> holds only totals { easy, right, hard, n }. No vote is ever stored
       // next to a name. pace/<date>/voters/<uid> is an EMPTY document that only stops a
       // student voting twice; teachers and admins cannot read it.
-      // Totals are readable only once n >= 5 (keep in sync with PACE_MIN_RESPONSES in src/config.js).
-      function sessionSubmitted(date) {
-        return get(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.status == 'submitted';
+      //
+      // Voting is open only for the class's most recent submitted session
+      // (classes/{cid}.lastSubmittedSession, which can only move forward). Totals become
+      // readable only after voting has CLOSED (a later session was submitted) and only if
+      // n >= 5 (keep in sync with PACE_MIN_RESPONSES in src/config.js). So nobody can watch
+      // totals change while votes come in, e.g. after removing everyone but one student.
+      function votingOpen(date) {
+        let session = get(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data;
+        return classDoc(cid).data.lastSubmittedSession == date
+          && session.status == 'submitted' && session.deleted == false;
+      }
+
+      function votingClosed(date) {
+        return date < classDoc(cid).data.lastSubmittedSession;
       }
 
       function voterPath(date) {
@@ -350,11 +405,11 @@ service cloud.firestore {
       }
 
       match /pace/{date} {
-        allow read: if (isTeacherOf(cid) || isAdmin()) && resource.data.n >= 5;
-        allow create: if isMemberOf(cid) && sessionSubmitted(date)
+        allow read: if (isTeacherOf(cid) || isAdmin()) && resource.data.n >= 5 && votingClosed(date);
+        allow create: if isMemberOf(cid) && votingOpen(date)
           && !exists(voterPath(date)) && existsAfter(voterPath(date))
           && oneVoteAdded({'easy': 0, 'right': 0, 'hard': 0, 'n': 0}, request.resource.data);
-        allow update: if isMemberOf(cid) && sessionSubmitted(date)
+        allow update: if isMemberOf(cid) && votingOpen(date)
           && !exists(voterPath(date)) && existsAfter(voterPath(date))
           && oneVoteAdded(resource.data, request.resource.data);
         allow delete: if false;

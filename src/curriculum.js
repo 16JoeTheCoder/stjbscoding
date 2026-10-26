@@ -153,7 +153,9 @@ export function sameJson(a, b) {
 
 // A level is frozen once any class has pinned it. pinsByClass: [{ className, pins: {levelId: version} }].
 // versions: { [version]: curriculumData }. Returns problems; empty means the new data is acceptable.
-export function frozenProblems(newData, pinsByClass, versions) {
+// allowMissing: for a rollback, a frozen level the target version does not have is fine, because
+// classes that pinned it keep seeing it from their pinned version.
+export function frozenProblems(newData, pinsByClass, versions, { allowMissing = false } = {}) {
   const problems = [];
   const checked = new Map(); // "levelId@version" -> done
   for (const { className, pins } of pinsByClass) {
@@ -164,6 +166,7 @@ export function frozenProblems(newData, pinsByClass, versions) {
       const frozen = findLevel(versions[version], levelId);
       if (!frozen) continue; // pinned version missing: nothing to compare against
       const now = findLevel(newData, levelId);
+      if (!now && allowMissing) continue;
       if (!now) problems.push(`Level "${levelId}" is frozen (${className} uses version ${version}) but is missing from the new file.`);
       else if (!sameJson(frozen, now)) problems.push(`Level "${levelId}" is frozen (${className} uses version ${version}) but the new file changes it. Upload typo fixes as errata to version ${version} instead.`);
     }

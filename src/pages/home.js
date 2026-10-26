@@ -82,7 +82,7 @@ async function teacherWeek(ctx) {
     ${loaded.map(teacherClassPanel)}`;
 }
 
-export function teacherClassPanel(l) {
+function teacherClassPanel(l) {
   const { cls } = l;
   const base = `/class/${cls.id}`;
   return html`

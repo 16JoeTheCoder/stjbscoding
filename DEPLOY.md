@@ -144,6 +144,8 @@ The build fails on purpose if any file is over Cloudflare's 25 MiB limit or if t
 
 Without this, the Google popup closes with an "unauthorized domain" error.
 
+Preview deployments (Pages builds of other branches, at `<hash>.stjbs-coding.pages.dev`) are not authorised, so sign-in fails there. That is fine: test on the production address, or add a specific preview host the same way if you really need one.
+
 ## 10. Make the first admin
 
 **Where:** browser, the deployed site, then the Firebase console

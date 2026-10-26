@@ -79,7 +79,7 @@ export default async function adminCurriculum(ctx) {
   }, (msg) => { s.error = msg; ctx.rerender(); });
 
   const makeLatest = (v) => (e) => busy(e, async () => {
-    const problems = frozenProblems(byVersion[v], pinsByClass, byVersion);
+    const problems = frozenProblems(byVersion[v], pinsByClass, byVersion, { allowMissing: true });
     if (problems.length) throw new Error(`Cannot make version ${v} the latest: ${problems.join(" ")}`);
     await data.setLatest(v, config.maxVersion);
     flash = `Version ${v} is now the latest.`;
@@ -139,7 +139,7 @@ export default async function adminCurriculum(ctx) {
         <tbody>${versions.map((v) => html`<tr>
           <td class="num">${v.version}</td><td>${dateOf(v.publishedAt)} ${v.publishedBy}</td><td class="wrap">${v.notes}</td>
           <td class="num">${(v.errata || []).length}</td>
-          <td>${v.version === config.latest ? badge("Latest", "ok") : html`<button class="jy-btn jy-btn--ghost jy-btn--s" @click=${makeLatest(v.version)}>Make latest</button>`}</td></tr>`)}</tbody>
+          <td>${v.version === config.latest ? badge("Latest", "ok") : html`<button class="jy-btn jy-btn--ghost" @click=${makeLatest(v.version)}>Make latest</button>`}</td></tr>`)}</tbody>
       </table></div>`}`;
 }
 

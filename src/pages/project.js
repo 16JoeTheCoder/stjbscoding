@@ -7,6 +7,7 @@ import { codeBox, newCodeState } from "../editor.js";
 import { dateOf, timeOf } from "../time.js";
 
 const SCRATCH_RE = /^https:\/\/scratch\.mit\.edu\/projects\/[0-9]+\/?$/;
+const LIMITS = { code: 50000, error: 4000, note: 1000 };   // same limits as firestore.rules
 const STATUSES = [["in_progress", "In progress"], ["done", "Done"], ["needs_help", "Needs help"]];
 
 export default async function projectPage(ctx) {
@@ -42,14 +43,22 @@ async function work(ctx, cls, project) {
 
   const save = (e) => busy(e, async () => {
     s.error = "";
+    s.saved = "";
     if (!s.optionId) throw new Error("Choose a project option first.");
     if (!python && s.scratchUrl && !SCRATCH_RE.test(s.scratchUrl.trim())) {
       throw new Error("Paste the project's share link, like https://scratch.mit.edu/projects/123456789");
     }
+    if (code.code.length > LIMITS.code) throw new Error(`Your code is longer than ${LIMITS.code} characters. Make it shorter to save.`);
+    if (s.status === "needs_help") {
+      // Look again, in case another tab already asked for help on this project.
+      myHelp.splice(0, myHelp.length, ...(await data.listMyHelp(cls.id, ctx.me.id)));
+    }
     const askForHelp = s.status === "needs_help" && !openHelp();
     await data.saveSubmission(cls.id, project, ctx.me, {
       optionId: s.optionId, code: python ? code.code : "", scratchUrl: s.scratchUrl.trim(),
-      status: s.status, lastError: python ? s.lastError : "", note: s.note, askForHelp,
+      status: s.status,
+      // Errors and notes are cut to the lengths the database accepts, so saving never fails on them.
+      lastError: python ? s.lastError.slice(-LIMITS.error) : "", note: s.note.slice(0, LIMITS.note), askForHelp,
     });
     if (askForHelp) myHelp.push({ projectId: project.id, status: "open" });
     s.saved = askForHelp ? "Saved. Your teacher has your code and your last error." : `Saved ${timeOf()}`;

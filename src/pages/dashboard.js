@@ -29,10 +29,7 @@ async function student(ctx) {
       const done = subs.filter((s) => s.status === "done").length;
       return html`
         <h2 class="section"><a href="#/class/${cls.id}">${cls.name}</a></h2>
-        <div class="stats">
-          <div class="jy-stat"><span class="jy-stat__label">Projects done</span><span class="jy-stat__value">${done}<span class="jy-stat__unit">of ${projects.length}</span></span></div>
-          <div class="jy-stat"><span class="jy-stat__label">Help requests</span><span class="jy-stat__value">${help.length}</span></div>
-        </div>
+        <p class="muted mb-4">${done} of ${projects.length} projects done. ${help.length} help request(s) asked.</p>
         ${projects.length ? html`<div class="table-wrap"><table class="jy-table">
           <thead><tr><th>Week</th><th>Project</th><th>Status</th></tr></thead>
           <tbody>${projects.map((p) => html`<tr><td class="mono">${p.week}</td>
@@ -45,7 +42,7 @@ async function teacher(ctx) {
   const classes = (await data.listMyTeaching(ctx.me.id)).filter((c) => !c.archived);
   const rows = await Promise.all(classes.map(async (cls) => {
     const l = await classForStaff(cls);
-    const [subs, pace, cur] = await Promise.all([data.listSubmissions(cls.id), data.listPace(cls.id), classCurriculum(cls)]);
+    const [subs, pace, cur] = await Promise.all([data.listSubmissions(cls.id), data.listPace(cls, l.sessions), classCurriculum(cls)]);
     return { ...l, subs, pace, cur };
   }));
   return () => html`
@@ -76,7 +73,10 @@ function matrix({ cls, approved, projects, subs }) {
 // Read-only monitoring for faculty.
 async function admin() {
   const classes = (await data.listAllClasses()).filter((c) => !c.archived);
-  const rows = await Promise.all(classes.map(async (cls) => ({ ...(await classForStaff(cls)), cur: await classCurriculum(cls), pace: await data.listPace(cls.id) })));
+  const rows = await Promise.all(classes.map(async (cls) => {
+    const l = await classForStaff(cls);
+    return { ...l, cur: await classCurriculum(cls), pace: await data.listPace(cls, l.sessions) };
+  }));
   const missing = rows.flatMap((r) => r.missing.map((date) => ({ date, cls: r.cls })));
   const stale = rows.flatMap((r) => r.help.filter((h) => daysBetween(dateOf(h.createdAt), today()) >= HELP_STALE_DAYS).map((h) => ({ ...h, cls: r.cls })));
   return () => html`

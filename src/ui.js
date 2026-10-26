@@ -56,9 +56,6 @@ export const statusBadge = (s) => {
 
 export const badge = (label, kind = "") => html`<span class="jy-badge ${kind ? `jy-badge--${kind}` : ""}">${label}</span>`;
 
-export const stat = (label, value, unit = "") => html`
-  <div class="jy-stat"><span class="jy-stat__label">${label}</span><span class="jy-stat__value">${value}${unit ? html`<span class="jy-stat__unit">${unit}</span>` : nothing}</span></div>`;
-
 // Tabs within a page (class pages). Links, so each tab has its own URL.
 export const tabs = (base, items, activeKey) => html`
   <nav class="tabs" aria-label="Sections">

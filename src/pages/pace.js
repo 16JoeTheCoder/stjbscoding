@@ -10,14 +10,14 @@ const CHOICES = [["easy", "Too easy"], ["right", "About right"], ["hard", "Too h
 // Student widget. Votes are anonymous: only totals are stored (DECISIONS.md D19).
 export function paceWidget(ctx, cls) {
   const date = cls.lastSubmittedSession;
-  const state = (paceWidget.state[cls.id] ??= { done: false, error: "" });
+  const state = (paceWidget.state[`${cls.id}/${date}`] ??= { done: false, error: "" });
   if (state.done) return html`<h3>Thanks</h3><p>Your answer was counted anonymously.</p>`;
   return html`
     <h3>How was the pace?</h3>
     <p>Session ${formatDate(date)}. Anonymous: nobody can see who answered.</p>
     <div class="row">
       ${CHOICES.map(([key, label]) => html`
-        <button class="jy-btn jy-btn--ghost jy-btn--s" @click=${(e) => busy(e, async () => {
+        <button class="jy-btn jy-btn--ghost" @click=${(e) => busy(e, async () => {
           await data.vote(cls.id, date, ctx.me.id, key);
           state.done = true;
           ctx.rerender();
@@ -29,7 +29,7 @@ paceWidget.state = {};
 
 // Teacher/admin table of totals (only sessions with enough answers are readable at all).
 export function paceTable(rows) {
-  if (!rows.length) return html`<p class="muted">No session has ${PACE_MIN_RESPONSES} or more answers yet. Totals appear once ${PACE_MIN_RESPONSES} students have answered, so nobody's answer can be singled out.</p>`;
+  if (!rows.length) return html`<p class="muted">Nothing to show yet. A session's totals appear once the next session's attendance is submitted (voting has closed) and only if ${PACE_MIN_RESPONSES} or more students answered, so nobody's answer can be singled out.</p>`;
   return html`
     <div class="table-wrap"><table class="jy-table">
       <thead><tr><th>Session</th><th class="num">Too easy</th><th class="num">About right</th><th class="num">Too hard</th><th class="num">Answers</th></tr></thead>

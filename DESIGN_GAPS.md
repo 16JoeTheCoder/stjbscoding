@@ -13,10 +13,12 @@ Places where the builtbyjosef design system (copied into `src/design/`, commit i
 | G7 | Editable code block | `jy-code` with a `<textarea>` inside (`.code-input`) using `--font-mono`, `--surface-sunken` | `jy-code` is display-only. |
 | G8 | Spacing utilities | `.mt-*`, `.mb-*` classes mapped to `--space-*` tokens | Optional. |
 | G9 | Neutral badge for "In progress", "Not started", "Current" | `jy-badge` with no modifier (grey circle) | Fine as is; documented here so nobody adds a colour. |
-| G10 | Stat rows show one orange cap per stat | Used as designed (Kata: one fixed form for stats) on the class Overview and student Dashboard; those views have no other orange | DESIGN.md's Itten rule and the stat's built-in cap conflict when there are several stats. |
-| G11 | Row actions in lists (Approve, Send answer, Run) | Ghost buttons (`jy-btn--ghost jy-btn--s`) | A primary `jy-btn` has an orange cap; many in one list would break the one-point rule. Each view keeps at most one primary or accent button. |
+| G10 | Summary numbers (students, help waiting, projects done) | Plain sentences in a panel, not `jy-stat` | Each `jy-stat` carries an orange cap, so a row of stats breaks the one-orange-point rule. The checker flagged this; stats were removed. A capless stat variant would help. |
+| G11 | Row actions in lists (Approve, Send answer, Run) | Full-size ghost buttons (`jy-btn--ghost`, 44px); `jy-btn--s` (32px) is not used because it is below the 44px touch target | A primary `jy-btn` has an orange cap; many in one list would break the one-point rule. Each view keeps at most one primary or accent button. |
 | G12 | App icon / favicon | None (`<link rel="icon" href="data:,">`) | The brief forbids the builtbyjosef logo outside the Settings credit, and the program has no logo of its own yet. |
 
 Not used on purpose: `ignite.css` (hero, flare, burn bar, stair) and `jy.js`. DESIGN.md's app recipe is "calm, no flare", and the only motion the app needs (hover, press) is already in `bundle.css`. Reduced motion is honoured by `bundle.css`.
 
 The builtbyjosef logo appears in exactly one place: the credit at the bottom of Settings (`tab-primary-light.svg` / `tab-primary-dark.svg`, 32px tall, above the 24px minimum), with the text "Designed and built by Josef Yang". The end-to-end test "the builtbyjosef logo appears only in the Settings credit" checks this.
+
+`scripts/jy-check.sh` (from the design system) only scans CSS and HTML files, so `scripts/check-templates.js` applies the same checks (plus emoji, inline pixel styles and small buttons) to the lit-html templates in `src/**/*.js`. `npm run design:check` runs both.

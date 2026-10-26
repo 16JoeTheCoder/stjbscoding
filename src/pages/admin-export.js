@@ -12,9 +12,10 @@ async function collect() {
   const classes = await data.listAllClasses();
   const out = { exportedAt: new Date().toISOString(), classes: [], attendance: [], submissions: [], help: [], pace: [] };
   for (const c of classes) {
-    const [members, sessions, subs, help, pace, projects] = await Promise.all([
-      data.listMembers(c.id), data.listSessions(c.id), data.listSubmissions(c.id), data.listAllHelp(c.id), data.listPace(c.id), data.listProjects(c.id),
+    const [members, sessions, subs, help, projects] = await Promise.all([
+      data.listMembers(c.id), data.listSessions(c.id), data.listSubmissions(c.id), data.listAllHelp(c.id), data.listProjects(c.id),
     ]);
+    const pace = await data.listPace(c, sessions);
     const name = Object.fromEntries(members.map((m) => [m.uid, m.name]));
     const projectTitle = Object.fromEntries(projects.map((p) => [p.id, p.title]));
     out.classes.push({ id: c.id, name: c.name, track: c.track, teachers: Object.values(c.teacherNames || {}).join("; "),
@@ -56,8 +57,11 @@ export default async function adminExport(ctx) {
     const day = today();
     if (kind === "json") download(`stjbs-coding-${day}.json`, JSON.stringify(all, null, 2), "application/json");
     else download(`stjbs-coding-${kind}-${day}.csv`, toCsv(all[kind]), "text/csv");
-    await data.markExported(ctx.me);
-    s.info = { lastExportAt: Date.now(), by: ctx.me.email };
+    // Only the full JSON counts as a backup; a single CSV does not reset the reminder.
+    if (kind === "json") {
+      await data.markExported(ctx.me);
+      s.info = { lastExportAt: Date.now(), by: ctx.me.email };
+    }
     s.msg = `Downloaded ${kind === "json" ? "everything as JSON" : kind}. Keep the file in the program's shared Drive folder.`;
     ctx.rerender();
   }, (msg) => { s.error = msg; ctx.rerender(); });

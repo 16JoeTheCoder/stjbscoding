@@ -37,7 +37,7 @@ export default async function adminPeople(ctx) {
       <div class="table-wrap"><table class="jy-table">
         <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
         <tbody>${shown.map((u) => html`<tr><td>${u.name}</td><td>${u.email}</td><td>
-          <span class="choice choice--s" role="radiogroup" aria-label=${`Role for ${u.name}`}>
+          <span class="choice" role="radiogroup" aria-label=${`Role for ${u.name}`}>
             ${["student", "teacher", "admin"].map((r) => html`<label><input type="radio" name=${"role-" + u.id} .checked=${u.role === r} @change=${setRole(u, r)} /><span>${r}</span></label>`)}
           </span></td></tr>`)}</tbody>
       </table></div>

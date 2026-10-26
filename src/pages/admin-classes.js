@@ -48,8 +48,8 @@ export default async function adminClasses(ctx) {
             ${[1, 2, 3, 4, 5, 6].map((d) => html`<option value=${d} ?selected=${slot.weekday === d}>${DAY_NAMES[d]}</option>`)}</select>
           <input class="jy-field__input w-auto" type="time" aria-label="Start" .value=${slot.start} @change=${(e) => { slot.start = e.target.value; }} />
           <input class="jy-field__input w-num" type="number" min="15" max="240" step="5" aria-label="Minutes" .value=${String(slot.minutes)} @change=${(e) => { slot.minutes = Number(e.target.value); }} /> <span class="muted">min</span>
-          <button class="jy-btn jy-btn--ghost jy-btn--s" @click=${() => { f.schedule.splice(i, 1); ctx.rerender(); }}>Remove</button></div>`)}
-        <button class="jy-btn jy-btn--ghost jy-btn--s" @click=${() => { f.schedule.push({ weekday: 4, start: "15:00", minutes: 60 }); ctx.rerender(); }}>Add a session</button>
+          <button class="jy-btn jy-btn--ghost" @click=${() => { f.schedule.splice(i, 1); ctx.rerender(); }}>Remove</button></div>`)}
+        <button class="jy-btn jy-btn--ghost" @click=${() => { f.schedule.push({ weekday: 4, start: "15:00", minutes: 60 }); ctx.rerender(); }}>Add a session</button>
       </fieldset>
       <div class="row">
         <label class="jy-field"><span class="jy-field__label">Term starts</span><input class="jy-field__input" type="date" .value=${f.termStart} @change=${(e) => { f.termStart = e.target.value; }} /></label>
