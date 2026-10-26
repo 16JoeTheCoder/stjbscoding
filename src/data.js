@@ -154,7 +154,7 @@ export async function saveSubmission(cid, project, me, { optionId, code, scratch
   });
   if (askForHelp) {
     b.set(doc(col(`classes/${cid}/help`)), {
-      uid: me.id, name: me.name, projectId: project.id, projectTitle: project.title,
+      uid: me.id, name: me.name, email: me.email, projectId: project.id, projectTitle: project.title,
       code, scratchUrl, error: lastError, note: note || "", status: "open", createdAt: serverTimestamp(),
     });
   }

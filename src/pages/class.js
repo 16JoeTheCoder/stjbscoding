@@ -231,7 +231,7 @@ function help(page) {
     <p class="muted mb-4">Longest waiting first. <button class="jy-btn jy-btn--ghost" @click=${() => ctx.reload()}>Refresh</button></p>
     <ul class="list">${l.help.map((h) => html`
       <li class="stack">
-        <div class="row">${badge(`Waiting ${ago(h.createdAt)}`, "warn")} <b>${h.name}</b> <span class="muted">${h.projectTitle}</span>
+        <div class="row">${badge(`Waiting ${ago(h.createdAt)}`, "warn")} <b>${h.name}</b> <span class="muted small">${h.email || ""}</span> <span class="muted">${h.projectTitle}</span>
           <a class="small" href="#/class/${cls.id}/project/${h.projectId}?student=${h.uid}">Open their work</a></div>
         ${h.note ? html`<p class="prose">"${h.note}"</p>` : nothing}
         ${h.error ? html`<pre class="block output__error">${h.error}</pre>` : nothing}

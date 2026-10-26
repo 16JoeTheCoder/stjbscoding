@@ -21,11 +21,15 @@ service cloud.firestore {
 
     // Google sign-in only, verified email, and either a school address or one
     // listed by an admin in config/access.extraEmails (for example the club account).
+    function schoolEmail() {
+      return email().matches('^[^@]+@stjbs[.]sch[.]id$');
+    }
+
     function allowedUser() {
       return signedIn()
         && request.auth.token.firebase.sign_in_provider == 'google.com'
         && request.auth.token.email_verified == true
-        && (email().matches('^[^@]+@stjbs[.]sch[.]id$')
+        && (schoolEmail()
             || email() in get(/databases/$(database)/documents/config/access).data.extraEmails);
     }
 
@@ -85,6 +89,10 @@ service cloud.firestore {
 
     // Timestamps must be the server's clock (serverTimestamp() in the app), so nobody
     // can back-date a help request to jump the queue.
+    function isName(v) {
+      return v is string && v.size() > 0 && v.size() <= 100;
+    }
+
     function isNow(v) {
       return v == request.time;
     }
@@ -110,7 +118,7 @@ service cloud.firestore {
       allow create: if allowedUser() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'classIds', 'createdAt'])
         && request.resource.data.email == email()
-        && isShortText(request.resource.data.name, 100)
+        && isName(request.resource.data.name)
         && request.resource.data.role == 'student'
         && request.resource.data.classIds == []
         && isNow(request.resource.data.createdAt);
@@ -122,7 +130,7 @@ service cloud.firestore {
       allow update: if (allowedUser() && request.auth.uid == uid
           && changed().hasOnly(['name', 'classIds'])
           && (!changed().hasAny(['name']) || resource.data.role == 'student')
-          && isShortText(request.resource.data.name, 100)
+          && isName(request.resource.data.name)
           && request.resource.data.classIds is list
           && request.resource.data.classIds.size() <= 20)
         || (isAdmin()
@@ -319,7 +327,8 @@ service cloud.firestore {
           || (allowedUser() && resource.data.uid == request.auth.uid);
 
         allow create: if isMemberOf(cid)
-          && request.resource.data.keys().hasOnly(['uid', 'name', 'projectId', 'projectTitle', 'code', 'scratchUrl', 'error', 'note', 'status', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'projectId', 'projectTitle', 'code', 'scratchUrl', 'error', 'note', 'status', 'createdAt'])
+          && request.resource.data.email == email()
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.status == 'open'
           && isNow(request.resource.data.createdAt)
@@ -356,7 +365,8 @@ service cloud.firestore {
       function validSession(date, d) {
         return d.keys().hasOnly(['date', 'status', 'marks', 'rev', 'deleted', 'updatedAt', 'updatedBy'])
           && d.date == date && isDate(date)
-          && dayOf(date) <= request.time + duration.value(1, 'd')   // not in the future
+          // Not in the future: Jakarta day D starts at 17:00 UTC on D-1, i.e. dayOf(D) - 7 h.
+          && dayOf(date) <= request.time + duration.value(7, 'h')
           && d.status in ['submitted', 'cancelled']
           && d.marks is map && d.marks.size() <= 60
           && d.marks.values().hasOnly(['present', 'absent'])
@@ -403,6 +413,13 @@ service cloud.firestore {
       // Totals become readable only after voting has CLOSED (a later session was submitted,
       // or the days have passed) and only if n >= 5 (PACE_MIN_RESPONSES). So nobody can watch
       // totals change while votes come in, e.g. after removing everyone but one student.
+      // Only real students vote: student role, a school account (not an allowlisted outside
+      // address an admin could create), and not a teacher of this class.
+      function canVote() {
+        return isMemberOf(cid) && role() == 'student' && schoolEmail()
+          && !(request.auth.uid in classDoc(cid).data.teacherIds);
+      }
+
       function votingOpen(date) {
         let session = get(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data;
         return classDoc(cid).data.lastSubmittedSession == date
@@ -429,10 +446,10 @@ service cloud.firestore {
 
       match /pace/{date} {
         allow read: if (isTeacherOf(cid) || isAdmin()) && resource.data.n >= 5 && votingClosed(date);
-        allow create: if isMemberOf(cid) && votingOpen(date)
+        allow create: if canVote() && votingOpen(date)
           && !exists(voterPath(date)) && existsAfter(voterPath(date))
           && oneVoteAdded({'easy': 0, 'right': 0, 'hard': 0, 'n': 0}, request.resource.data);
-        allow update: if isMemberOf(cid) && votingOpen(date)
+        allow update: if canVote() && votingOpen(date)
           && !exists(voterPath(date)) && existsAfter(voterPath(date))
           && oneVoteAdded(resource.data, request.resource.data);
         allow delete: if false;
@@ -440,7 +457,7 @@ service cloud.firestore {
         match /voters/{uid} {
           allow get: if allowedUser() && request.auth.uid == uid;
           allow list: if false;
-          allow create: if isMemberOf(cid) && request.auth.uid == uid
+          allow create: if canVote() && request.auth.uid == uid
             && request.resource.data.keys().size() == 0
             && getAfter(/databases/$(database)/documents/classes/$(cid)/pace/$(date)).data.n
                == (exists(/databases/$(database)/documents/classes/$(cid)/pace/$(date))

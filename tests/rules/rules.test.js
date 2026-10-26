@@ -296,7 +296,7 @@ test("submissions: a student cannot read another student's work", async () => {
 
 // ---------- Help requests ----------
 
-const help = (uid, extra = {}) => ({ uid, name: uid, projectId: "p1", projectTitle: "Week 1", code: "x", scratchUrl: "", error: "NameError", note: "", status: "open", createdAt: NOW, ...extra });
+const help = (uid, extra = {}) => ({ uid, name: uid, email: people[uid].email, projectId: "p1", projectTitle: "Week 1", code: "x", scratchUrl: "", error: "NameError", note: "", status: "open", createdAt: NOW, ...extra });
 
 test("help: approved students create their own open request only", async () => {
   await assertSucceeds(setDoc(doc(db.s1, `classes/${C}/help/h2`), help("s1")));
@@ -530,4 +530,30 @@ test("names on student writes must be the student's own; staff cannot rename the
 test("a project's creation time cannot be rewritten", async () => {
   await assertFails(updateDoc(doc(db.t1, `classes/${C}/projects/p1`), { createdAt: new Date("2020-01-01") }));
   await assertSucceeds(updateDoc(doc(db.t1, `classes/${C}/projects/p1`), { deleted: true }));
+});
+
+// ---------- Findings from the independent checker, round 3 ----------
+
+test("only real students vote: not allowlisted outside accounts, not the class's teachers", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    await setDoc(doc(f, "config/access"), { extraEmails: ["stjbscodingclub@gmail.com", "fake1@gmail.com"] });
+    await setDoc(doc(f, "users/fake1"), { email: "fake1@gmail.com", name: "fake1", role: "student", classIds: [], createdAt: 1 });
+    await setDoc(doc(f, `classes/${C}/members/fake1`), { uid: "fake1", name: "fake1", email: "fake1@gmail.com", code: "ABCDEF", className: "x", status: "approved", requestedAt: 1 });
+    await setDoc(doc(f, `classes/${C}/members/t1`), { uid: "t1", name: "t1", email: people.t1.email, code: "ABCDEF", className: "x", status: "approved", requestedAt: 1 });
+  });
+  const fake = env.authenticatedContext("fake1", token("fake1@gmail.com")).firestore();
+  await assertFails(vote(fake, "fake1", D1, "easy", false));
+  await assertFails(vote(db.t1, "t1", D1, "easy", false));
+  await assertSucceeds(vote(db.s1, "s1", D1, "easy", false));
+});
+
+test("attendance for tomorrow (Jakarta) is refused; today is allowed", async () => {
+  await assertFails(sessionBatch(db.t1, addDays(today(), 1), 1).commit());
+  await assertSucceeds(sessionBatch(db.t1, today(), 1).commit());
+});
+
+test("names cannot be empty; help requests carry the writer's real email", async () => {
+  await assertFails(updateDoc(doc(db.s1, "users/s1"), { name: "" }));
+  await assertFails(setDoc(doc(db.s1, `classes/${C}/help/h9`), help("s1", { email: people.s2.email })));
 });

@@ -6,7 +6,7 @@ What was verified before handover, how, and what was found. Re-run everything wi
 
 | Area | Result | Evidence |
 | --- | --- | --- |
-| Security rules | **VERIFIED with the Firebase emulator** | `npm run test:rules`: 46 tests, every role against every collection, all passing. Plus the checkers' own adversarial probes (95 in round 1, more in round 2). |
+| Security rules | **VERIFIED with the Firebase emulator** | `npm run test:rules`: 49 tests, every role against every collection, all passing. Plus the checkers' own adversarial probes (95 in round 1, more in round 2). |
 | Broken flows | Verified in a real browser | `npm run test:e2e`: 16 flows in Chromium, against the Auth and Firestore emulators, under the production CSP. |
 | Python runtime | Verified | Unit tests run every curriculum snippet through the same code as the browser worker; e2e runs Python in Chromium under the CSP, including an infinite loop being stopped. |
 | Deploy readiness | Verified, except the real Google popup | `npm run build` passes `scripts/check-dist.js`. The popup cannot be tested here (see Not verified). |
@@ -18,7 +18,7 @@ What was verified before handover, how, and what was found. Re-run everything wi
 | Command | Result |
 | --- | --- |
 | `npm test` | 23 passed, 0 failed (curriculum validation, frozen levels, errata, rollback, Jakarta dates, CSV, Python runner, all 10 sample snippets) |
-| `npm run test:rules` | 46 passed, 0 failed |
+| `npm run test:rules` | 49 passed, 0 failed |
 | `npm run test:e2e` | 16 passed, 0 failed |
 | `npm run build` | `ok dist: 22 files`; largest file `pyodide/pyodide.asm.wasm` 9.6 MB (limit 25 MiB) |
 | `npm run design:check` | `ok builtbyjosef check clean`, `ok templates clean` |
@@ -68,6 +68,17 @@ A fresh agent re-attacked every round-1 fix and looked for regressions. It confi
 | R7 | minor | An attendance save from a stale tab could fail by trying to move `lastSubmittedSession` backwards. | **Fixed.** The class is re-read before deciding. |
 | R8 | nit | Two simultaneous first pace votes: one student saw an error. | **Fixed.** The app retries the update once. |
 | R9 | nit | The last session of a term never got pace totals. | **Fixed.** Voting closes after 7 days (D34). |
+
+## Independent checker, round 3
+
+A fresh agent attacked the round-2 fixes. R1, R3, R4 and R6 to R9 held, and all normal app flows were allowed under the new rules. It found these:
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| T1 | major | One admin could learn a named student's vote with no helper. They allowlisted made-up Gmail accounts, joined and approved them, voted with them, and subtracted. | **Fixed.** Only real students vote: student role, an @stjbs.sch.id account, and not a teacher of that class. Rules test "only real students vote". D19 updated. |
+| T2 | minor | Attendance for tomorrow (Jakarta time) was allowed from 07:00 each day, so students could vote on it. | **Fixed.** The future check is now exact for UTC+7. Rules test covers both tomorrow (refused) and today (allowed). |
+| T3 | minor | A student could rename themselves to a classmate's name and file a help request under it. Empty names were accepted. | **Fixed.** Help requests now carry the verified email, which is shown in the queue, and names must be 1 to 100 characters (D35). The roster already shows emails. |
+| T4 | nit | A soft-deleted current session that is restored reopens voting. | **Accepted.** It leaks nothing, because totals stay hidden while voting is open (noted in D19). |
 
 ## Not verified here (founder to check after deploying)
 
