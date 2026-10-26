@@ -1,0 +1,19 @@
+# Cloudflare response headers (Pages and Workers static assets both read this file).
+# CSP notes:
+#  - 'wasm-unsafe-eval' lets the Python runtime (WebAssembly) compile. It does not allow eval().
+#  - apis.google.com, accounts.google.com and *.firebaseapp.com are needed by the Google sign-in popup.
+#  - *.googleapis.com is Firebase Auth and Firestore.
+#  - No COOP "same-origin": it would break the sign-in popup (DECISIONS.md D8).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://apis.google.com; worker-src 'self'; connect-src 'self' https://*.googleapis.com https://apis.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/pyodide/*
+  Cache-Control: public, max-age=604800

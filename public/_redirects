@@ -1,0 +1,3 @@
+# Intentionally empty. The app uses hash routes (/#/class/abc), so every page is
+# served by index.html without any rewrite rule (DECISIONS.md D10).
+# Do NOT add "/* /index.html 200": on Workers static assets it is flagged as an infinite loop.

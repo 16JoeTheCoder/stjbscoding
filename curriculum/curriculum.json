@@ -1,0 +1,357 @@
+{
+  "$schema": "./curriculum.schema.json",
+  "formatVersion": 1,
+  "tracks": [
+    {
+      "id": "python",
+      "title": "Python",
+      "levels": [
+        {
+          "id": "py-l1",
+          "title": "Level 1: First programs",
+          "overview": "Printing, variables and reading input. Everything a program needs to talk to its user.",
+          "topics": [
+            {
+              "id": "py-print",
+              "title": "Output with print",
+              "overview": "print() shows text and numbers. Separate several values with commas.",
+              "source": {
+                "title": "The Python Tutorial, section 3",
+                "url": "https://docs.python.org/3/tutorial/introduction.html",
+                "licence": "PSF License 2.0"
+              },
+              "lessons": [
+                {
+                  "id": "py-print-1",
+                  "title": "Hello, world",
+                  "overview": "Write and run a first program in Thonny.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-print-hello",
+                  "title": "Hello",
+                  "code": "print(\"Hello, world\")\nprint(\"Sum:\", 2 + 3)"
+                },
+                {
+                  "id": "py-print-sep",
+                  "title": "Separators",
+                  "code": "print(\"a\", \"b\", \"c\", sep=\"-\")\nprint(\"no newline\", end=\"\")\nprint(\" ...joined\")"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "py-print-card",
+                  "title": "Name card",
+                  "brief": "Print a name card for yourself with a border made of characters.",
+                  "starter": "# Print a name card\nprint(\"+----------+\")\n"
+                },
+                {
+                  "id": "py-print-art",
+                  "title": "Text art",
+                  "brief": "Draw an animal or object using only print().",
+                  "starter": "print(\" /\\\\_/\\\\ \")\n"
+                }
+              ]
+            },
+            {
+              "id": "py-variables",
+              "title": "Variables",
+              "overview": "A variable is a name for a value. Assign with =, read by using the name.",
+              "lessons": [
+                {
+                  "id": "py-variables-1",
+                  "title": "Names and values",
+                  "overview": "Assign, reassign and print variables.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-variables-swap",
+                  "title": "Swap two values",
+                  "code": "a = 3\nb = 5\na, b = b, a\nprint(a, b)"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "py-variables-receipt",
+                  "title": "Shop receipt",
+                  "brief": "Store three prices in variables and print a receipt with the total.",
+                  "starter": "price_1 = 12000\n"
+                }
+              ]
+            },
+            {
+              "id": "py-input",
+              "title": "Input",
+              "overview": "input() reads a line the user types. It always returns text; use int() for whole numbers.",
+              "lessons": [
+                {
+                  "id": "py-input-1",
+                  "title": "Asking questions",
+                  "overview": "Read a name and an age, then reply.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-input-greet",
+                  "title": "Greeting",
+                  "code": "name = input(\"Name? \")\nage = int(input(\"Age? \"))\nprint(\"Hi\", name + \", next year you will be\", age + 1)",
+                  "stdin": [
+                    "Budi",
+                    "14"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "py-l2",
+          "title": "Level 2: Decisions and loops",
+          "overview": "Make programs choose and repeat.",
+          "topics": [
+            {
+              "id": "py-conditionals",
+              "title": "Conditionals",
+              "overview": "if, elif and else run different code depending on a condition.",
+              "source": {
+                "title": "Think Python, 2nd edition, chapter 5",
+                "url": "https://greenteapress.com/wp/think-python-2e/",
+                "licence": "CC BY-NC 3.0"
+              },
+              "lessons": [
+                {
+                  "id": "py-conditionals-1",
+                  "title": "If and else",
+                  "overview": "Comparison operators and if/else.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-conditionals-grade",
+                  "title": "Grade",
+                  "code": "score = 72\nif score >= 80:\n    print(\"A\")\nelif score >= 65:\n    print(\"B\")\nelse:\n    print(\"Keep going\")"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "py-conditionals-quiz",
+                  "title": "Quiz",
+                  "brief": "Ask three questions and count correct answers.",
+                  "starter": "score = 0\n"
+                },
+                {
+                  "id": "py-conditionals-guess",
+                  "title": "Number guess",
+                  "brief": "The program picks a number; tell the player higher or lower once.",
+                  "starter": "import random\nsecret = random.randint(1, 10)\n"
+                }
+              ]
+            },
+            {
+              "id": "py-loops",
+              "title": "Loops",
+              "overview": "for repeats over a range or a list; while repeats until a condition is false.",
+              "lessons": [
+                {
+                  "id": "py-loops-1",
+                  "title": "for and range",
+                  "overview": "Counting loops.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                },
+                {
+                  "id": "py-loops-2",
+                  "title": "while",
+                  "overview": "Loops that stop on a condition.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-loops-range",
+                  "title": "Times table",
+                  "code": "for i in range(1, 6):\n    print(i, \"x 7 =\", i * 7)"
+                },
+                {
+                  "id": "py-loops-while",
+                  "title": "Countdown",
+                  "code": "n = 5\nwhile n > 0:\n    print(n)\n    n -= 1\nprint(\"Lift off\")"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "py-loops-pattern",
+                  "title": "Patterns",
+                  "brief": "Print a triangle of stars whose height the user chooses.",
+                  "starter": "height = int(input(\"Height? \"))\n"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "py-l3",
+          "title": "Level 3: Working with data",
+          "overview": "Strings, lists and your own functions.",
+          "topics": [
+            {
+              "id": "py-strings",
+              "title": "Strings",
+              "overview": "Index, slice and transform text.",
+              "lessons": [
+                {
+                  "id": "py-strings-1",
+                  "title": "Slicing",
+                  "overview": "Indexes, slices and len().",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-strings-slice",
+                  "title": "Slices",
+                  "code": "word = \"Berchmans\"\nprint(word[0], word[-1])\nprint(word[0:5])\nprint(word.upper(), len(word))"
+                }
+              ]
+            },
+            {
+              "id": "py-lists",
+              "title": "Lists",
+              "overview": "Store many values in order; loop over them.",
+              "lessons": [
+                {
+                  "id": "py-lists-1",
+                  "title": "Lists",
+                  "overview": "Create, append and loop.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-lists-avg",
+                  "title": "Average",
+                  "code": "marks = [78, 85, 92, 64]\nprint(\"Average:\", sum(marks) / len(marks))\nmarks.append(88)\nprint(sorted(marks))"
+                }
+              ]
+            },
+            {
+              "id": "py-functions",
+              "title": "Functions",
+              "overview": "Name a piece of code with def and reuse it with different inputs.",
+              "lessons": [
+                {
+                  "id": "py-functions-1",
+                  "title": "def and return",
+                  "overview": "Parameters and return values.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "snippets": [
+                {
+                  "id": "py-functions-area",
+                  "title": "Area",
+                  "code": "def area(width, height):\n    return width * height\n\nprint(area(3, 4))\nprint(area(10, 2))"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scratch",
+      "title": "Scratch",
+      "levels": [
+        {
+          "id": "sc-l1",
+          "title": "Level 1: Moving sprites",
+          "overview": "Events, motion and looks.",
+          "topics": [
+            {
+              "id": "sc-motion",
+              "title": "Motion and events",
+              "overview": "Start scripts with the green flag and move sprites.",
+              "source": {
+                "title": "Scratch Creative Computing Curriculum",
+                "url": "https://creativecomputing.gse.harvard.edu/guide/",
+                "licence": "CC BY-SA 4.0"
+              },
+              "lessons": [
+                {
+                  "id": "sc-motion-1",
+                  "title": "When flag clicked",
+                  "overview": "Make a sprite move and turn.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "sc-motion-dance",
+                  "title": "Dance party",
+                  "brief": "Make two sprites dance to a sound when the flag is clicked."
+                },
+                {
+                  "id": "sc-motion-race",
+                  "title": "Race",
+                  "brief": "Two sprites race across the stage at random speeds."
+                }
+              ]
+            },
+            {
+              "id": "sc-looks",
+              "title": "Looks and sounds",
+              "overview": "Costumes, speech bubbles and sounds.",
+              "lessons": [
+                {
+                  "id": "sc-looks-1",
+                  "title": "Costumes",
+                  "overview": "Animate a sprite by switching costumes.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "sc-looks-story",
+                  "title": "Short story",
+                  "brief": "Tell a three-scene story with dialogue."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "sc-l2",
+          "title": "Level 2: Games",
+          "overview": "Loops, conditions and variables in Scratch.",
+          "topics": [
+            {
+              "id": "sc-games",
+              "title": "Catch game",
+              "overview": "Use forever loops, if blocks and a score variable.",
+              "lessons": [
+                {
+                  "id": "sc-games-1",
+                  "title": "Score",
+                  "overview": "Make and change a variable.",
+                  "slides": "https://docs.google.com/presentation/d/REPLACE-WITH-REAL-SLIDES-ID/edit"
+                }
+              ],
+              "projects": [
+                {
+                  "id": "sc-games-catch",
+                  "title": "Catch the apple",
+                  "brief": "Move a basket with the arrow keys and catch falling apples."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

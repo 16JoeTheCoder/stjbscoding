@@ -1,0 +1,10 @@
+// Only used if the site is deployed as a Cloudflare Worker with static assets
+// (Workers & Pages > Create > Import a repository). Cloudflare Pages ignores this file.
+// No Worker script: assets only, so requests are free and unlimited.
+{
+  "name": "stjbs-coding",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
