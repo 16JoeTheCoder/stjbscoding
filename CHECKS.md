@@ -80,6 +80,13 @@ A fresh agent attacked the round-2 fixes. R1, R3, R4 and R6 to R9 held, and all 
 | T3 | minor | A student could rename themselves to a classmate's name and file a help request under it. Empty names were accepted. | **Fixed.** Help requests now carry the verified email, which is shown in the queue, and names must be 1 to 100 characters (D35). The roster already shows emails. |
 | T4 | nit | A soft-deleted current session that is restored reopens voting. | **Accepted.** It leaks nothing, because totals stay hidden while voting is open (noted in D19). |
 
+## Independent checker, round 4: clean
+
+A fresh agent attacked T1 to T3 with its own emulator tests. Its tries included an admin with an allowlisted outside account, self-demotion, role flips, remove and re-approve, cancel, delete and restore, and reading the totals at every point. Its conclusion: **no single person can learn how a named student voted** without at least 3 real school-account students colluding. That is within the limit D19 accepts. All five suites passed on its run. It found two nits, both fixed:
+
+- An allowlisted non-school student account saw a pace question it could never answer. It is now hidden for non-school accounts.
+- A Google display name over 100 characters would block the first sign-in. The name is now cut to 100 characters.
+
 ## Not verified here (founder to check after deploying)
 
 - **The real Google sign-in popup.** This sandbox blocks `apis.google.com`, so the popup could not be opened, in dev or in tests. Tests sign in through the emulator with the same Google credential type (`signInWithCredential`). After deploying, check this: sign in on the live site with a school account; sign in with a non-school Gmail and confirm it is refused; check the browser console (F12) for CSP errors during sign-in. If the CSP blocks something, the console names the host; add it to the matching directive in `public/_headers`.

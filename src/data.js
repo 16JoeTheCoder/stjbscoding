@@ -21,7 +21,7 @@ const col = (path) => collection(db, path);
 export const getProfile = (uid) => one(`users/${uid}`);
 
 export async function createProfile(user) {
-  const profile = { email: user.email.toLowerCase(), name: user.displayName || user.email, role: "student", classIds: [], createdAt: serverTimestamp() };
+  const profile = { email: user.email.toLowerCase(), name: (user.displayName || user.email).slice(0, 100), role: "student", classIds: [], createdAt: serverTimestamp() };
   await setDoc(doc(db, "users", user.uid), profile);
   return { id: user.uid, ...profile };
 }
