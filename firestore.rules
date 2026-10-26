@@ -1,0 +1,376 @@
+rules_version = '2';
+
+// STJBS Coding: Firestore security rules.
+// These rules ARE the security of the app. The web client is untrusted: anything a
+// student could do by editing the JavaScript in their browser, these rules must stop.
+// Data model: see ARCHITECTURE.md. Tests: tests/rules/ (npm run test:rules).
+// Nothing is ever hard-deleted, except join-code documents when a code is replaced.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Who is asking ----------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function email() {
+      return request.auth.token.email.lower();
+    }
+
+    // Google sign-in only, verified email, and either a school address or one
+    // listed by an admin in config/access.extraEmails (for example the club account).
+    function allowedUser() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true
+        && (email().matches('^[^@]+@stjbs[.]sch[.]id$')
+            || email() in get(/databases/$(database)/documents/config/access).data.extraEmails);
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function hasProfile() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return userDoc().data.role;
+    }
+
+    function isAdmin() {
+      return allowedUser() && hasProfile() && role() == 'admin';
+    }
+
+    function isStaff() {
+      return allowedUser() && hasProfile() && role() in ['teacher', 'admin'];
+    }
+
+    function classDoc(cid) {
+      return get(/databases/$(database)/documents/classes/$(cid));
+    }
+
+    // A teacher of a class is staff AND listed in that class's teacherIds.
+    function isTeacherOf(cid) {
+      return isStaff() && request.auth.uid in classDoc(cid).data.teacherIds;
+    }
+
+    function memberPath(cid, uid) {
+      return /databases/$(database)/documents/classes/$(cid)/members/$(uid);
+    }
+
+    // An approved student of the class.
+    function isMemberOf(cid) {
+      return allowedUser() && hasProfile()
+        && exists(memberPath(cid, request.auth.uid))
+        && get(memberPath(cid, request.auth.uid)).data.status == 'approved';
+    }
+
+    // ---------- Small helpers ----------
+
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isShortText(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    function isDate(v) {
+      return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // ---------- Users ----------
+
+    match /users/{uid} {
+      allow get: if allowedUser() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+
+      // Everyone starts as a student. Admins are made by another admin, or by the
+      // founder in the Firebase console for the very first one (see DEPLOY.md).
+      allow create: if allowedUser() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['email', 'name', 'role', 'classIds', 'createdAt'])
+        && request.resource.data.email == email()
+        && isShortText(request.resource.data.name, 100)
+        && request.resource.data.role == 'student'
+        && request.resource.data.classIds == [];
+
+      // A user may change their display name and their own list of class shortcuts.
+      // classIds is only a shortcut list: access to a class is decided by the member document.
+      // Only an admin may change a role.
+      allow update: if (allowedUser() && request.auth.uid == uid
+          && changed().hasOnly(['name', 'classIds'])
+          && isShortText(request.resource.data.name, 100)
+          && request.resource.data.classIds is list
+          && request.resource.data.classIds.size() <= 20)
+        || (isAdmin()
+          && changed().hasOnly(['role'])
+          && request.resource.data.role in ['student', 'teacher', 'admin']);
+
+      allow delete: if false;
+    }
+
+    // ---------- Configuration ----------
+
+    // config/access: { extraEmails: [...] }   non-school emails allowed to sign in
+    // config/curriculum: { latest: n, maxVersion: n }
+    // config/export: { lastExportAt, by }
+    match /config/{docId} {
+      allow get: if (docId == 'curriculum' && allowedUser()) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && docId in ['access', 'curriculum', 'export'];
+      allow delete: if false;
+    }
+
+    // ---------- Curriculum ----------
+
+    // One document per published version. Versions are never deleted. In-place
+    // updates are only errata (typos, repaired links); the admin page checks that
+    // nothing else changed before it writes. See CURRICULUM_FORMAT.md.
+    match /curriculumVersions/{v} {
+      allow read: if allowedUser();
+      allow create: if isAdmin()
+        && request.resource.data.version is int
+        && v == string(request.resource.data.version)
+        && request.resource.data.keys().hasOnly(['version', 'data', 'notes', 'publishedAt', 'publishedBy', 'errata']);
+      allow update: if isAdmin() && changed().hasOnly(['data', 'errata']);
+      allow delete: if false;
+    }
+
+    // ---------- Join codes ----------
+
+    // A student can look up one code if they know it, but can never list codes.
+    match /joinCodes/{code} {
+      allow get: if allowedUser();
+      allow list: if false;
+      allow create: if code.matches('^[A-HJ-NP-Z2-9]{6}$')
+        && request.resource.data.keys().hasOnly(['classId', 'className'])
+        && (isAdmin() || isTeacherOf(request.resource.data.classId))
+        && getAfter(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.joinCode == code;
+      // Only when the class has moved to a different code.
+      allow delete: if (isAdmin() || isTeacherOf(resource.data.classId))
+        && getAfter(/databases/$(database)/documents/classes/$(resource.data.classId)).data.joinCode != code;
+      allow update: if false;
+    }
+
+    // ---------- Classes ----------
+
+    function validClass(d) {
+      return d.keys().hasOnly(['name', 'track', 'teacherIds', 'teacherNames', 'schedule', 'termStart',
+                               'termEnd', 'joinCode', 'defaultPresent', 'pointer', 'pins',
+                               'lastSubmittedSession', 'archived', 'createdAt'])
+        && isShortText(d.name, 80)
+        && d.track in ['python', 'scratch']
+        && d.teacherIds is list
+        && d.schedule is list && d.schedule.size() <= 7
+        && isDate(d.termStart) && isDate(d.termEnd)
+        && d.defaultPresent is bool
+        && d.pins is map;
+    }
+
+    // Pins say which curriculum version a class saw for each level. Once set, a pin never changes.
+    function pinsOnlyGrow() {
+      return request.resource.data.pins.diff(resource.data.pins).changedKeys().size() == 0
+        && request.resource.data.pins.diff(resource.data.pins).removedKeys().size() == 0;
+    }
+
+    match /classes/{cid} {
+      allow get: if isAdmin() || isTeacherOf(cid) || isMemberOf(cid);
+      // Teachers may only list the classes they teach (query: teacherIds array-contains me).
+      allow list: if isAdmin() || (isStaff() && request.auth.uid in resource.data.teacherIds);
+      allow create: if isAdmin() && validClass(request.resource.data);
+      allow update: if validClass(request.resource.data) && pinsOnlyGrow()
+        && (isAdmin()
+            || (isTeacherOf(cid)
+                && changed().hasOnly(['pointer', 'pins', 'defaultPresent', 'lastSubmittedSession', 'joinCode'])));
+      allow delete: if false;
+
+      // ----- Members: one document per student, id = student uid -----
+      match /members/{uid} {
+        allow get: if (allowedUser() && request.auth.uid == uid) || isTeacherOf(cid) || isAdmin();
+        allow list: if isTeacherOf(cid) || isAdmin();
+
+        // A student asks to join with a valid join code for THIS class.
+        allow create: if allowedUser() && hasProfile() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'code', 'className', 'status', 'requestedAt'])
+          && request.resource.data.uid == uid
+          && request.resource.data.email == email()
+          && isShortText(request.resource.data.name, 100)
+          && isShortText(request.resource.data.className, 80)
+          && request.resource.data.status == 'pending'
+          && get(/databases/$(database)/documents/joinCodes/$(request.resource.data.code)).data.classId == cid;
+
+        // A rejected or removed student may ask again with a valid code.
+        // A teacher approves, rejects or removes.
+        allow update: if (allowedUser() && request.auth.uid == uid
+            && resource.data.status in ['rejected', 'removed']
+            && changed().hasOnly(['status', 'code', 'requestedAt'])
+            && request.resource.data.status == 'pending'
+            && get(/databases/$(database)/documents/joinCodes/$(request.resource.data.code)).data.classId == cid)
+          || (isTeacherOf(cid)
+            && changed().hasOnly(['status', 'decidedAt', 'decidedBy'])
+            && request.resource.data.status in ['approved', 'rejected', 'removed']);
+
+        allow delete: if false;
+      }
+
+      // ----- Weekly projects -----
+      match /projects/{pid} {
+        allow read: if isMemberOf(cid) || isTeacherOf(cid) || isAdmin();
+        allow create, update: if isTeacherOf(cid)
+          && request.resource.data.keys().hasOnly(['title', 'week', 'topicId', 'options', 'createdAt', 'createdBy', 'deleted'])
+          && isShortText(request.resource.data.title, 120)
+          && isDate(request.resource.data.week)
+          && request.resource.data.options is list
+          && request.resource.data.options.size() >= 1
+          && request.resource.data.options.size() <= 8
+          && request.resource.data.deleted is bool;
+        allow delete: if false;
+      }
+
+      // ----- Submissions: id = <student uid>_<project id> -----
+      function ownsSubmission(sid) {
+        return allowedUser() && sid.split('_')[0] == request.auth.uid;
+      }
+
+      function validSubmission(cid, sid, d) {
+        return d.keys().hasOnly(['uid', 'name', 'projectId', 'optionId', 'code', 'scratchUrl', 'status', 'lastError', 'updatedAt'])
+          && d.uid == request.auth.uid
+          && sid == request.auth.uid + '_' + d.projectId
+          && exists(/databases/$(database)/documents/classes/$(cid)/projects/$(d.projectId))
+          && isShortText(d.name, 100)
+          && isShortText(d.optionId, 60)
+          && isShortText(d.code, 50000)
+          && isShortText(d.lastError, 4000)
+          && (d.scratchUrl == '' || d.scratchUrl.matches('^https://scratch[.]mit[.]edu/projects/[0-9]+/?$'))
+          && d.status in ['in_progress', 'done', 'needs_help'];
+      }
+
+      match /submissions/{sid} {
+        allow get: if ownsSubmission(sid) || isTeacherOf(cid) || isAdmin();
+        allow list: if isTeacherOf(cid) || isAdmin()
+          || (allowedUser() && resource.data.uid == request.auth.uid);
+        allow create, update: if isMemberOf(cid) && ownsSubmission(sid)
+          && validSubmission(cid, sid, request.resource.data);
+        allow delete: if false;
+      }
+
+      // ----- Help requests -----
+      match /help/{hid} {
+        allow read: if isTeacherOf(cid) || isAdmin()
+          || (allowedUser() && resource.data.uid == request.auth.uid);
+
+        allow create: if isMemberOf(cid)
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'projectId', 'projectTitle', 'code', 'scratchUrl', 'error', 'note', 'status', 'createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'open'
+          && isShortText(request.resource.data.name, 100)
+          && isShortText(request.resource.data.projectTitle, 120)
+          && isShortText(request.resource.data.code, 50000)
+          && isShortText(request.resource.data.scratchUrl, 200)
+          && isShortText(request.resource.data.error, 4000)
+          && isShortText(request.resource.data.note, 1000);
+
+        // The teacher answers an open request; the student may close their own.
+        allow update: if (isTeacherOf(cid)
+            && resource.data.status == 'open'
+            && changed().hasOnly(['status', 'answer', 'answeredBy', 'answeredByName', 'answeredAt'])
+            && request.resource.data.status == 'answered'
+            && request.resource.data.answer is string
+            && request.resource.data.answer.size() > 0
+            && request.resource.data.answer.size() <= 2000
+            && request.resource.data.answeredBy == request.auth.uid)
+          || (allowedUser() && resource.data.uid == request.auth.uid
+            && resource.data.status == 'open'
+            && changed().hasOnly(['status', 'closedAt'])
+            && request.resource.data.status == 'closed');
+
+        allow delete: if false;
+      }
+
+      // ----- Attendance sessions: id = date (YYYY-MM-DD, Asia/Jakarta) -----
+      // Every write bumps rev by one and must write history/<rev> in the same batch,
+      // so the history is complete by construction. "Delete" is deleted: true.
+      function validSession(date, d) {
+        return d.keys().hasOnly(['date', 'status', 'marks', 'rev', 'deleted', 'updatedAt', 'updatedBy'])
+          && d.date == date && isDate(date)
+          && d.status in ['submitted', 'cancelled']
+          && d.marks is map && d.marks.size() <= 60
+          && d.deleted is bool
+          && d.updatedBy == request.auth.uid
+          && d.rev is int
+          && existsAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)/history/$(string(d.rev)));
+      }
+
+      match /sessions/{date} {
+        allow read: if isTeacherOf(cid) || isAdmin();
+        allow create: if isTeacherOf(cid) && validSession(date, request.resource.data)
+          && request.resource.data.rev == 1;
+        allow update: if isTeacherOf(cid) && validSession(date, request.resource.data)
+          && request.resource.data.rev == resource.data.rev + 1;
+        allow delete: if false;
+
+        // Append-only edit history. Each entry is a copy of the session as written.
+        match /history/{rev} {
+          allow read: if isTeacherOf(cid) || isAdmin();
+          allow create: if isTeacherOf(cid)
+            && request.resource.data.keys().hasOnly(['rev', 'at', 'by', 'byName', 'status', 'marks', 'deleted'])
+            && request.resource.data.by == request.auth.uid
+            && rev == string(request.resource.data.rev)
+            && request.resource.data.rev == getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.rev
+            && request.resource.data.marks == getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.marks
+            && request.resource.data.status == getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.status
+            && request.resource.data.deleted == getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.deleted;
+          allow update, delete: if false;
+        }
+      }
+
+      // ----- Pace feedback: anonymous by construction -----
+      // pace/<date> holds only totals { easy, right, hard, n }. No vote is ever stored
+      // next to a name. pace/<date>/voters/<uid> is an EMPTY document that only stops a
+      // student voting twice; teachers and admins cannot read it.
+      // Totals are readable only once n >= 5 (keep in sync with PACE_MIN_RESPONSES in src/config.js).
+      function sessionSubmitted(date) {
+        return get(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data.status == 'submitted';
+      }
+
+      function voterPath(date) {
+        return /databases/$(database)/documents/classes/$(cid)/pace/$(date)/voters/$(request.auth.uid);
+      }
+
+      function oneVoteAdded(before, after) {
+        return after.keys().hasOnly(['easy', 'right', 'hard', 'n'])
+          && after.easy is int && after.right is int && after.hard is int
+          && after.n == before.n + 1
+          && after.easy - before.easy + after.right - before.right + after.hard - before.hard == 1
+          && after.easy >= before.easy && after.right >= before.right && after.hard >= before.hard;
+      }
+
+      match /pace/{date} {
+        allow read: if (isTeacherOf(cid) || isAdmin()) && resource.data.n >= 5;
+        allow create: if isMemberOf(cid) && sessionSubmitted(date)
+          && !exists(voterPath(date)) && existsAfter(voterPath(date))
+          && oneVoteAdded({'easy': 0, 'right': 0, 'hard': 0, 'n': 0}, request.resource.data);
+        allow update: if isMemberOf(cid) && sessionSubmitted(date)
+          && !exists(voterPath(date)) && existsAfter(voterPath(date))
+          && oneVoteAdded(resource.data, request.resource.data);
+        allow delete: if false;
+
+        match /voters/{uid} {
+          allow get: if allowedUser() && request.auth.uid == uid;
+          allow list: if false;
+          allow create: if isMemberOf(cid) && request.auth.uid == uid
+            && request.resource.data.keys().size() == 0
+            && getAfter(/databases/$(database)/documents/classes/$(cid)/pace/$(date)).data.n
+               == (exists(/databases/$(database)/documents/classes/$(cid)/pace/$(date))
+                   ? get(/databases/$(database)/documents/classes/$(cid)/pace/$(date)).data.n + 1
+                   : 1);
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}

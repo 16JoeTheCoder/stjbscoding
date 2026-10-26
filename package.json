@@ -1,0 +1,27 @@
+{
+  "name": "stjbs-coding",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/copy-pyodide.js && vite",
+    "build": "node scripts/copy-pyodide.js && vite build && node scripts/check-dist.js",
+    "preview": "vite preview",
+    "emulators": "firebase emulators:start --project demo-stjbs",
+    "seed": "node scripts/seed.js",
+    "test": "node --test tests/unit/*.test.js",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-stjbs \"node --test tests/rules/*.test.js\"",
+    "test:e2e": "firebase emulators:exec --only firestore,auth --project demo-stjbs \"node --test --test-concurrency=1 tests/e2e/*.test.js\"",
+    "design:check": "bash scripts/jy-check.sh src index.html"
+  },
+  "dependencies": {
+    "firebase": "^13.1.0",
+    "lit-html": "^3.3.3",
+    "pyodide": "^314.0.7"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase-tools": "^15.34.1",
+    "vite": "^8.3.5"
+  }
+}
