@@ -93,6 +93,12 @@ service cloud.firestore {
       return userDoc().data.name;
     }
 
+    // A "YYYY-MM-DD" date as a timestamp (midnight UTC). Used for "not in the future" and
+    // "within N days" checks; one day of slack covers Jakarta being UTC+7.
+    function dayOf(date) {
+      return timestamp.date(int(date[0:4]), int(date[5:7]), int(date[8:10]));
+    }
+
     // ---------- Users ----------
 
     match /users/{uid} {
@@ -109,11 +115,13 @@ service cloud.firestore {
         && request.resource.data.classIds == []
         && isNow(request.resource.data.createdAt);
 
-      // A user may change their display name and their own list of class shortcuts.
-      // classIds is only a shortcut list: access to a class is decided by the member document.
-      // Only an admin may change a role.
+      // A user may change their own list of class shortcuts, and a student their display name.
+      // Staff names appear in attendance history and help answers, so staff cannot rename
+      // themselves (an admin can, in the console). classIds is only a shortcut list: access
+      // to a class is decided by the member document. Only an admin may change a role.
       allow update: if (allowedUser() && request.auth.uid == uid
           && changed().hasOnly(['name', 'classIds'])
+          && (!changed().hasAny(['name']) || resource.data.role == 'student')
           && isShortText(request.resource.data.name, 100)
           && request.resource.data.classIds is list
           && request.resource.data.classIds.size() <= 20)
@@ -202,9 +210,19 @@ service cloud.firestore {
       let d = request.resource.data;
       return changed().hasOnly(['pointer', 'pins', 'defaultPresent', 'lastSubmittedSession', 'joinCode'])
         && teacherPinsOk()
-        && d.joinCode.matches('^[A-HJ-NP-Z2-9]{6}$')
-        && (d.lastSubmittedSession == resource.data.lastSubmittedSession
-            || (isDate(d.lastSubmittedSession) && d.lastSubmittedSession > resource.data.lastSubmittedSession));
+        && d.joinCode.matches('^[A-HJ-NP-Z2-9]{6}$');
+    }
+
+    // lastSubmittedSession opens pace voting for that session and closes it for earlier ones.
+    // For EVERYONE, admins included: it only moves forward, and only to a session that is
+    // submitted (and not deleted) once this write is done. So nobody can reopen a closed vote.
+    function lastSessionOk(cid) {
+      let before = resource.data.lastSubmittedSession;
+      let after = request.resource.data.lastSubmittedSession;
+      let session = getAfter(/databases/$(database)/documents/classes/$(cid)/sessions/$(after));
+      return after == before
+        || (isDate(after) && after > before
+            && session.data.status == 'submitted' && session.data.deleted == false);
     }
 
     match /classes/{cid} {
@@ -212,7 +230,7 @@ service cloud.firestore {
       // Teachers may only list the classes they teach (query: teacherIds array-contains me).
       allow list: if isAdmin() || (isStaff() && request.auth.uid in resource.data.teacherIds);
       allow create: if isAdmin() && validClass(request.resource.data);
-      allow update: if validClass(request.resource.data)
+      allow update: if validClass(request.resource.data) && lastSessionOk(cid)
         && (isAdmin() || (isTeacherOf(cid) && teacherClassEditOk()));
       allow delete: if false;
 
@@ -228,7 +246,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'code', 'className', 'status', 'requestedAt'])
           && request.resource.data.uid == uid
           && request.resource.data.email == email()
-          && isShortText(request.resource.data.name, 100)
+          && request.resource.data.name == myName()
           && isShortText(request.resource.data.className, 80)
           && request.resource.data.status == 'pending'
           && get(/databases/$(database)/documents/joinCodes/$(request.resource.data.code)).data.classId == cid;
@@ -262,7 +280,8 @@ service cloud.firestore {
           && request.resource.data.options.size() <= 8
           && request.resource.data.deleted is bool
           && request.resource.data.createdBy == (resource == null ? request.auth.uid : resource.data.createdBy)
-          && (resource != null || isNow(request.resource.data.createdAt));
+          && (resource == null ? isNow(request.resource.data.createdAt)
+                               : request.resource.data.createdAt == resource.data.createdAt);
         allow delete: if false;
       }
 
@@ -276,7 +295,7 @@ service cloud.firestore {
           && d.uid == request.auth.uid
           && sid == request.auth.uid + '_' + d.projectId
           && exists(/databases/$(database)/documents/classes/$(cid)/projects/$(d.projectId))
-          && isShortText(d.name, 100)
+          && d.name == myName()
           && isShortText(d.optionId, 60)
           && isShortText(d.code, 50000)
           && isShortText(d.lastError, 4000)
@@ -304,7 +323,7 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.status == 'open'
           && isNow(request.resource.data.createdAt)
-          && isShortText(request.resource.data.name, 100)
+          && request.resource.data.name == myName()
           && isShortText(request.resource.data.projectTitle, 120)
           && isShortText(request.resource.data.code, 50000)
           && isShortText(request.resource.data.scratchUrl, 200)
@@ -337,6 +356,7 @@ service cloud.firestore {
       function validSession(date, d) {
         return d.keys().hasOnly(['date', 'status', 'marks', 'rev', 'deleted', 'updatedAt', 'updatedBy'])
           && d.date == date && isDate(date)
+          && dayOf(date) <= request.time + duration.value(1, 'd')   // not in the future
           && d.status in ['submitted', 'cancelled']
           && d.marks is map && d.marks.size() <= 60
           && d.marks.values().hasOnly(['present', 'absent'])
@@ -378,18 +398,21 @@ service cloud.firestore {
       // student voting twice; teachers and admins cannot read it.
       //
       // Voting is open only for the class's most recent submitted session
-      // (classes/{cid}.lastSubmittedSession, which can only move forward). Totals become
-      // readable only after voting has CLOSED (a later session was submitted) and only if
-      // n >= 5 (keep in sync with PACE_MIN_RESPONSES in src/config.js). So nobody can watch
+      // (classes/{cid}.lastSubmittedSession, which can only move forward) and only for 7 days
+      // (8 with time-zone slack; keep in sync with PACE_VOTING_DAYS in src/config.js).
+      // Totals become readable only after voting has CLOSED (a later session was submitted,
+      // or the days have passed) and only if n >= 5 (PACE_MIN_RESPONSES). So nobody can watch
       // totals change while votes come in, e.g. after removing everyone but one student.
       function votingOpen(date) {
         let session = get(/databases/$(database)/documents/classes/$(cid)/sessions/$(date)).data;
         return classDoc(cid).data.lastSubmittedSession == date
-          && session.status == 'submitted' && session.deleted == false;
+          && session.status == 'submitted' && session.deleted == false
+          && request.time < dayOf(date) + duration.value(8, 'd');
       }
 
       function votingClosed(date) {
-        return date < classDoc(cid).data.lastSubmittedSession;
+        return date < classDoc(cid).data.lastSubmittedSession
+          || request.time >= dayOf(date) + duration.value(8, 'd');
       }
 
       function voterPath(date) {

@@ -4,7 +4,7 @@ import * as data from "../data.js";
 import { classForStaff, classCurriculum } from "../load.js";
 import { pageHead, empty, statusBadge, badge, notice } from "../ui.js";
 import { formatDate, sessionsThisWeek, slotFor, today, mondayOf, ago, daysBetween, dateOf } from "../time.js";
-import { HELP_STALE_DAYS, EXPORT_WARN_DAYS } from "../config.js";
+import { HELP_STALE_DAYS, EXPORT_WARN_DAYS, PACE_VOTING_DAYS } from "../config.js";
 import { paceWidget } from "./pace.js";
 
 export default async function home(ctx) {
@@ -31,7 +31,8 @@ async function studentWeek(ctx) {
     const week = mondayOf(today());
     const thisWeek = projects.filter((p) => p.week === week);
     const latestProject = thisWeek[0] || projects[0];
-    const voted = cls.lastSubmittedSession ? await data.hasVoted(cls.id, cls.lastSubmittedSession, ctx.me.id) : true;
+    const last = cls.lastSubmittedSession;
+    const voted = last && daysBetween(last, today()) < PACE_VOTING_DAYS ? await data.hasVoted(cls.id, last, ctx.me.id) : true;
     classes.push({ cls, projects: thisWeek.length ? thisWeek : latestProject ? [latestProject] : [], subs, cur, voted,
       answers: help.filter((h) => h.status === "answered") });
   }

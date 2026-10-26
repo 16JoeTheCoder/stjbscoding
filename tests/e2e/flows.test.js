@@ -316,6 +316,20 @@ test("editing old attendance keeps a student who has since been removed", async 
   await tara.context().close();
 });
 
+test("pace: if the teacher cancels the session, students are told voting has closed", async () => {
+  const tara = await as("ta");
+  await go(tara, "/class/py1/attendance");
+  await tara.getByRole("button", { name: "Open" }).first().click();   // most recent session
+  await tara.getByRole("button", { name: "No session this day" }).click();
+  await tara.waitForFunction(() => document.body.textContent.includes("No session"));
+  const budi = await as("s2");
+  await go(budi, "/");
+  await budi.getByRole("button", { name: "Too hard" }).click();
+  await budi.getByText("Answers for this session have closed.").waitFor();
+  await tara.context().close();
+  await budi.context().close();
+});
+
 test("no console errors or CSP violations during the run", () => {
   assert.deepEqual(problems, []);
 });

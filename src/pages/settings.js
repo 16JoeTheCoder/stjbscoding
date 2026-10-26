@@ -14,16 +14,18 @@ export default async function settings(ctx) {
     ${s.saved ? notice("Name saved.", "ok") : nothing}
     <div class="form">
       <p><span class="jy-field__label">Signed in as</span><br />${ctx.me.email} <span class="muted">(${ctx.me.role})</span></p>
-      <label class="jy-field"><span class="jy-field__label">Display name</span>
-        <input class="jy-field__input" maxlength="100" .value=${s.name} @input=${(e) => { s.name = e.target.value; }} />
-        <span class="jy-field__help">Shown on new join requests and help requests.</span></label>
+      ${ctx.me.role === "student" ? html`
+        <label class="jy-field"><span class="jy-field__label">Display name</span>
+          <input class="jy-field__input" maxlength="100" .value=${s.name} @input=${(e) => { s.name = e.target.value; }} />
+          <span class="jy-field__help">Shown on new join requests and help requests.</span></label>`
+        : html`<p><span class="jy-field__label">Name</span><br />${ctx.me.name} <span class="muted">(staff names appear in attendance history; an admin can change it in the Firebase console)</span></p>`}
       <div class="row">
-        <button class="jy-btn jy-btn--ghost" @click=${(e) => busy(e, async () => {
+        ${ctx.me.role === "student" ? html`<button class="jy-btn jy-btn--ghost" @click=${(e) => busy(e, async () => {
           await data.updateName(ctx.me.id, s.name.trim());
           ctx.me.name = s.name.trim();
           s.saved = true;
           ctx.rerender();
-        })}>Save name</button>
+        })}>Save name</button>` : nothing}
         <button class="jy-btn jy-btn--ghost" @click=${() => signOut(auth)}>Sign out</button>
       </div>
       <p><a href="#/attributions">Curriculum sources and licences</a></p>

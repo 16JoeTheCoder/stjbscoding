@@ -10,7 +10,12 @@ import {
   writeBatch, increment, arrayUnion, serverTimestamp,
 } from "firebase/firestore";
 
-const NOW = serverTimestamp();   // rules require server time on every timestamp a user writes
+const NOW = serverTimestamp();
+
+// Session dates relative to today: the rules refuse future sessions and close pace voting after 7 days.
+import { today, addDays } from "../../src/time.js";
+const D1 = addDays(today(), -3), D2 = addDays(today(), -2), D3 = addDays(today(), -1);
+const OLD = addDays(today(), -10);   // rules require server time on every timestamp a user writes
 
 let env;
 const C = "class1";   // Python class taught by teacher T1, student S1 approved, S2 pending
@@ -68,7 +73,7 @@ beforeEach(async () => {
     await setDoc(doc(f, "config/curriculum"), { latest: 1, maxVersion: 1 });
     await setDoc(doc(f, "config/export"), { lastExportAt: 1, by: "admin" });
     await setDoc(doc(f, "curriculumVersions/1"), { version: 1, data: { tracks: [] }, notes: "", publishedAt: 1, publishedBy: "admin", errata: [] });
-    await setDoc(doc(f, "classes", C), { ...classData("Python A", ["t1"], "ABCDEF"), lastSubmittedSession: "2026-07-14" });
+    await setDoc(doc(f, "classes", C), { ...classData("Python A", ["t1"], "ABCDEF"), lastSubmittedSession: D1 });
     await setDoc(doc(f, "classes", C2), classData("Python B", ["t2"], "GHJKLM"));
     await setDoc(doc(f, "joinCodes/ABCDEF"), { classId: C, className: "Python A" });
     await setDoc(doc(f, "joinCodes/GHJKLM"), { classId: C2, className: "Python B" });
@@ -79,8 +84,8 @@ beforeEach(async () => {
     await setDoc(doc(f, `classes/${C}/projects/p1`), { title: "Week 1", week: "2026-07-13", topicId: "t", options: [{ id: "a", title: "A" }], createdAt: 1, createdBy: "t1", deleted: false });
     await setDoc(doc(f, `classes/${C}/submissions/s1_p1`), { uid: "s1", name: "s1", projectId: "p1", optionId: "a", code: "print(1)", scratchUrl: "", status: "in_progress", lastError: "", updatedAt: 1 });
     await setDoc(doc(f, `classes/${C}/help/h1`), { uid: "s1", name: "s1", projectId: "p1", projectTitle: "Week 1", code: "x", scratchUrl: "", error: "", note: "", status: "open", createdAt: 1 });
-    await setDoc(doc(f, `classes/${C}/sessions/2026-07-14`), { date: "2026-07-14", status: "submitted", marks: { s1: "present" }, rev: 1, deleted: false, updatedAt: 1, updatedBy: "t1" });
-    await setDoc(doc(f, `classes/${C}/sessions/2026-07-14/history/1`), { rev: 1, at: 1, by: "t1", byName: "t1", status: "submitted", marks: { s1: "present" }, deleted: false });
+    await setDoc(doc(f, `classes/${C}/sessions/${D1}`), { date: D1, status: "submitted", marks: { s1: "present" }, rev: 1, deleted: false, updatedAt: 1, updatedBy: "t1" });
+    await setDoc(doc(f, `classes/${C}/sessions/${D1}/history/1`), { rev: 1, at: 1, by: "t1", byName: "t1", status: "submitted", marks: { s1: "present" }, deleted: false });
   });
 });
 
@@ -336,40 +341,40 @@ function sessionBatch(f, date, rev, extra = {}) {
 }
 
 test("attendance: the class teacher submits with a history entry", async () => {
-  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 1).commit());
-  await assertSucceeds(sessionBatch(db.t1, "2026-07-14", 2).commit());   // edit = rev + 1
+  await assertSucceeds(sessionBatch(db.t1, D2, 1).commit());
+  await assertSucceeds(sessionBatch(db.t1, D1, 2).commit());   // edit = rev + 1
 });
 
 test("attendance: denies writes without history, wrong rev, or by others", async () => {
-  await assertFails(setDoc(doc(db.t1, `classes/${C}/sessions/2026-07-28`), { date: "2026-07-28", status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" }));
-  await assertFails(sessionBatch(db.t1, "2026-07-14", 5).commit());
-  await assertFails(sessionBatch(db.t1, "2026-07-14", 1).commit());
-  await assertFails(sessionBatch(db.t2, "2026-07-21", 1, { updatedBy: "t2" }).commit());
-  await assertFails(sessionBatch(db.s1, "2026-07-21", 1, { updatedBy: "s1" }).commit());
-  await assertFails(sessionBatch(db.admin, "2026-07-21", 1, { updatedBy: "admin" }).commit());
+  await assertFails(setDoc(doc(db.t1, `classes/${C}/sessions/${D3}`), { date: D3, status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" }));
+  await assertFails(sessionBatch(db.t1, D1, 5).commit());
+  await assertFails(sessionBatch(db.t1, D1, 1).commit());
+  await assertFails(sessionBatch(db.t2, D2, 1, { updatedBy: "t2" }).commit());
+  await assertFails(sessionBatch(db.s1, D2, 1, { updatedBy: "s1" }).commit());
+  await assertFails(sessionBatch(db.admin, D2, 1, { updatedBy: "admin" }).commit());
 });
 
 test("attendance: history cannot be rewritten and sessions cannot be hard-deleted", async () => {
-  await assertFails(setDoc(doc(db.t1, `classes/${C}/sessions/2026-07-14/history/1`), { rev: 1, at: 9, by: "t1", byName: "t1", status: "submitted", marks: {}, deleted: false }));
-  await assertFails(deleteDoc(doc(db.t1, `classes/${C}/sessions/2026-07-14/history/1`)));
-  await assertFails(deleteDoc(doc(db.t1, `classes/${C}/sessions/2026-07-14`)));
-  await assertSucceeds(sessionBatch(db.t1, "2026-07-14", 2, { deleted: true }).commit());   // soft delete
+  await assertFails(setDoc(doc(db.t1, `classes/${C}/sessions/${D1}/history/1`), { rev: 1, at: 9, by: "t1", byName: "t1", status: "submitted", marks: {}, deleted: false }));
+  await assertFails(deleteDoc(doc(db.t1, `classes/${C}/sessions/${D1}/history/1`)));
+  await assertFails(deleteDoc(doc(db.t1, `classes/${C}/sessions/${D1}`)));
+  await assertSucceeds(sessionBatch(db.t1, D1, 2, { deleted: true }).commit());   // soft delete
 });
 
 test("attendance: history entry must match the session it records", async () => {
   const t1 = db.t1;
   const b = writeBatch(t1);
-  b.set(doc(t1, `classes/${C}/sessions/2026-07-21`), { date: "2026-07-21", status: "submitted", marks: { s1: "absent" }, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" });
-  b.set(doc(t1, `classes/${C}/sessions/2026-07-21/history/1`), { rev: 1, at: NOW, by: "t1", byName: "t1", status: "submitted", marks: { s1: "present" }, deleted: false });
+  b.set(doc(t1, `classes/${C}/sessions/${D2}`), { date: D2, status: "submitted", marks: { s1: "absent" }, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" });
+  b.set(doc(t1, `classes/${C}/sessions/${D2}/history/1`), { rev: 1, at: NOW, by: "t1", byName: "t1", status: "submitted", marks: { s1: "present" }, deleted: false });
   await assertFails(b.commit());
 });
 
 test("attendance: students and other teachers cannot read sessions", async () => {
-  await assertFails(getDoc(doc(db.s1, `classes/${C}/sessions/2026-07-14`)));
+  await assertFails(getDoc(doc(db.s1, `classes/${C}/sessions/${D1}`)));
   await assertFails(getDocs(collection(db.t2, `classes/${C}/sessions`)));
   await assertSucceeds(getDocs(collection(db.t1, `classes/${C}/sessions`)));
   await assertSucceeds(getDocs(collection(db.admin, `classes/${C}/sessions`)));
-  await assertSucceeds(getDocs(collection(db.admin, `classes/${C}/sessions/2026-07-14/history`)));
+  await assertSucceeds(getDocs(collection(db.admin, `classes/${C}/sessions/${D1}/history`)));
 });
 
 // ---------- Pace feedback (anonymity) ----------
@@ -394,60 +399,60 @@ async function addApprovedStudents(n) {
 const voter = (i) => env.authenticatedContext(`v${i}`, token(`v${i}@stjbs.sch.id`)).firestore();
 
 test("pace: an approved student votes once, only after attendance is submitted", async () => {
-  await assertSucceeds(vote(db.s1, "s1", "2026-07-14", "hard", false));
-  await assertFails(vote(db.s1, "s1", "2026-07-14", "easy", true));   // second vote
-  await assertFails(vote(db.s1, "s1", "2026-07-21", "easy", false));  // no submitted session
-  await assertFails(vote(db.s2, "s2", "2026-07-14", "easy", true));   // pending member
-  await assertFails(vote(db.s3, "s3", "2026-07-14", "easy", true));   // other class
+  await assertSucceeds(vote(db.s1, "s1", D1, "hard", false));
+  await assertFails(vote(db.s1, "s1", D1, "easy", true));   // second vote
+  await assertFails(vote(db.s1, "s1", D2, "easy", false));  // no submitted session
+  await assertFails(vote(db.s2, "s2", D1, "easy", true));   // pending member
+  await assertFails(vote(db.s3, "s3", D1, "easy", true));   // other class
 });
 
 test("pace: denies tampering with totals", async () => {
-  await assertFails(setDoc(doc(db.s1, `classes/${C}/pace/2026-07-14`), { easy: 5, right: 0, hard: 0, n: 5 }));
+  await assertFails(setDoc(doc(db.s1, `classes/${C}/pace/${D1}`), { easy: 5, right: 0, hard: 0, n: 5 }));
   const s1 = db.s1;
   const b = writeBatch(s1);
-  b.set(doc(s1, `classes/${C}/pace/2026-07-14`), { easy: 1, right: 0, hard: 0, n: 1 });
-  b.set(doc(s1, `classes/${C}/pace/2026-07-14/voters/s2`), {});   // someone else's marker
+  b.set(doc(s1, `classes/${C}/pace/${D1}`), { easy: 1, right: 0, hard: 0, n: 1 });
+  b.set(doc(s1, `classes/${C}/pace/${D1}/voters/s2`), {});   // someone else's marker
   await assertFails(b.commit());
   const b2 = writeBatch(s1);
-  b2.set(doc(s1, `classes/${C}/pace/2026-07-14`), { easy: 1, right: 0, hard: 0, n: 1 });
-  b2.set(doc(s1, `classes/${C}/pace/2026-07-14/voters/s1`), { vote: "easy" });   // vote next to a name
+  b2.set(doc(s1, `classes/${C}/pace/${D1}`), { easy: 1, right: 0, hard: 0, n: 1 });
+  b2.set(doc(s1, `classes/${C}/pace/${D1}/voters/s1`), { vote: "easy" });   // vote next to a name
   await assertFails(b2.commit());
 });
 
 test("pace: nobody can see who voted, and totals stay hidden below 5 responses", async () => {
   await addApprovedStudents(5);
-  await vote(db.s1, "s1", "2026-07-14", "right", false);
-  for (let i = 0; i < 3; i++) await vote(voter(i), `v${i}`, "2026-07-14", "easy", true);
+  await vote(db.s1, "s1", D1, "right", false);
+  for (let i = 0; i < 3; i++) await vote(voter(i), `v${i}`, D1, "easy", true);
   // 4 responses: hidden from everyone
-  await assertFails(getDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`)));
-  await assertFails(getDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
+  await assertFails(getDoc(doc(db.t1, `classes/${C}/pace/${D1}`)));
+  await assertFails(getDoc(doc(db.admin, `classes/${C}/pace/${D1}`)));
   // who voted: never readable by teacher or admin, in any way
   for (const f of [db.t1, db.admin]) {
-    await assertFails(getDoc(doc(f, `classes/${C}/pace/2026-07-14/voters/s1`)));
-    await assertFails(getDocs(collection(f, `classes/${C}/pace/2026-07-14/voters`)));
+    await assertFails(getDoc(doc(f, `classes/${C}/pace/${D1}/voters/s1`)));
+    await assertFails(getDocs(collection(f, `classes/${C}/pace/${D1}/voters`)));
   }
-  await assertSucceeds(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14/voters/s1`)));   // "you voted"
-  await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14/voters/v0`)));
-  await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14`)));
+  await assertSucceeds(getDoc(doc(db.s1, `classes/${C}/pace/${D1}/voters/s1`)));   // "you voted"
+  await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/${D1}/voters/v0`)));
+  await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/${D1}`)));
   // fifth response: still hidden while voting is open, so nobody can watch single votes arrive
-  await vote(voter(3), "v3", "2026-07-14", "hard", true);
-  await assertFails(getDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`)));
-  await assertFails(getDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
+  await vote(voter(3), "v3", D1, "hard", true);
+  await assertFails(getDoc(doc(db.t1, `classes/${C}/pace/${D1}`)));
+  await assertFails(getDoc(doc(db.admin, `classes/${C}/pace/${D1}`)));
   // the next session is submitted: voting on 07-14 closes, totals become readable to the class teacher and admin
-  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 1, { closeVoting: true }).commit());
-  await assertFails(vote(voter(4), "v4", "2026-07-14", "easy", true));   // closed
-  await assertSucceeds(getDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`)));
+  await assertSucceeds(sessionBatch(db.t1, D2, 1, { closeVoting: true }).commit());
+  await assertFails(vote(voter(4), "v4", D1, "easy", true));   // closed
+  await assertSucceeds(getDoc(doc(db.t1, `classes/${C}/pace/${D1}`)));
   await assertFails(getDocs(collection(db.t1, `classes/${C}/pace`)));
-  await assertSucceeds(getDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
-  await assertFails(getDoc(doc(db.t2, `classes/${C}/pace/2026-07-14`)));
-  await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/2026-07-14`)));
+  await assertSucceeds(getDoc(doc(db.admin, `classes/${C}/pace/${D1}`)));
+  await assertFails(getDoc(doc(db.t2, `classes/${C}/pace/${D1}`)));
+  await assertFails(getDoc(doc(db.s1, `classes/${C}/pace/${D1}`)));
 });
 
 test("pace: teachers cannot vote or reset totals", async () => {
-  await assertFails(vote(db.t1, "t1", "2026-07-14", "easy", false));
-  await vote(db.s1, "s1", "2026-07-14", "easy", false);
-  await assertFails(setDoc(doc(db.t1, `classes/${C}/pace/2026-07-14`), { easy: 0, right: 0, hard: 0, n: 0 }));
-  await assertFails(deleteDoc(doc(db.admin, `classes/${C}/pace/2026-07-14`)));
+  await assertFails(vote(db.t1, "t1", D1, "easy", false));
+  await vote(db.s1, "s1", D1, "easy", false);
+  await assertFails(setDoc(doc(db.t1, `classes/${C}/pace/${D1}`), { easy: 0, right: 0, hard: 0, n: 0 }));
+  await assertFails(deleteDoc(doc(db.admin, `classes/${C}/pace/${D1}`)));
 });
 
 // ---------- Findings from the independent checker (CHECKS.md) ----------
@@ -462,20 +467,20 @@ test("names in answers and history must be the writer's own", async () => {
   await assertFails(updateDoc(doc(db.t1, `classes/${C}/help/h1`), { status: "answered", answer: "x", answeredBy: "t1", answeredByName: "Mr Ariel", answeredAt: NOW }));
   const t1 = db.t1;
   const b = writeBatch(t1);
-  b.set(doc(t1, `classes/${C}/sessions/2026-07-21`), { date: "2026-07-21", status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" });
-  b.set(doc(t1, `classes/${C}/sessions/2026-07-21/history/1`), { rev: 1, at: NOW, by: "t1", byName: "Mr Ariel", status: "submitted", marks: {}, deleted: false });
+  b.set(doc(t1, `classes/${C}/sessions/${D2}`), { date: D2, status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: NOW, updatedBy: "t1" });
+  b.set(doc(t1, `classes/${C}/sessions/${D2}/history/1`), { rev: 1, at: NOW, by: "t1", byName: "Mr Ariel", status: "submitted", marks: {}, deleted: false });
   await assertFails(b.commit());
 });
 
 test("attendance marks are only present or absent", async () => {
-  await assertFails(sessionBatch(db.t1, "2026-07-21", 1, { marks: { s1: "banana" } }).commit());
+  await assertFails(sessionBatch(db.t1, D2, 1, { marks: { s1: "banana" } }).commit());
 });
 
 test("pace: no voting on an older session or a deleted one", async () => {
-  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 1, { closeVoting: true }).commit());
-  await assertFails(vote(db.s1, "s1", "2026-07-14", "easy", false));   // no longer the latest
-  await assertSucceeds(sessionBatch(db.t1, "2026-07-21", 2, { deleted: true }).commit());
-  await assertFails(vote(db.s1, "s1", "2026-07-21", "easy", false));   // deleted
+  await assertSucceeds(sessionBatch(db.t1, D2, 1, { closeVoting: true }).commit());
+  await assertFails(vote(db.s1, "s1", D1, "easy", false));   // no longer the latest
+  await assertSucceeds(sessionBatch(db.t1, D2, 2, { deleted: true }).commit());
+  await assertFails(vote(db.s1, "s1", D2, "easy", false));   // deleted
 });
 
 test("teachers cannot pin arbitrary versions, set junk join codes, or move the pace window back", async () => {
@@ -488,4 +493,41 @@ test("teachers cannot pin arbitrary versions, set junk join codes, or move the p
 test("a teacher cannot join their own class as a student", async () => {
   await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), "joinCodes/ABCDEF"), { classId: C, className: "Python A" }));
   await assertFails(setDoc(doc(db.t1, `classes/${C}/members/t1`), { uid: "t1", name: "t1", email: people.t1.email, code: "ABCDEF", className: "Python A", status: "pending", requestedAt: NOW }));
+});
+
+// ---------- Findings from the independent checker, round 2 ----------
+
+test("nobody, not even an admin, can move the pace window back or to a session that does not exist", async () => {
+  await assertSucceeds(sessionBatch(db.t1, D2, 1, { closeVoting: true }).commit());
+  await assertFails(updateDoc(doc(db.admin, "classes", C), { lastSubmittedSession: D1 }));   // backwards
+  await assertFails(updateDoc(doc(db.t1, "classes", C), { lastSubmittedSession: D3 }));      // no session on D3
+  await assertFails(updateDoc(doc(db.t1, "classes", C), { lastSubmittedSession: "9999-99-99" }));
+  await assertFails(updateDoc(doc(db.admin, "classes", C), { lastSubmittedSession: D3 }));
+});
+
+test("attendance cannot be recorded for a future date", async () => {
+  await assertFails(sessionBatch(db.t1, addDays(today(), 3), 1).commit());
+});
+
+test("pace voting closes after 7 days, and the totals then become readable", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const f = ctx.firestore();
+    await setDoc(doc(f, `classes/${C}/sessions/${OLD}`), { date: OLD, status: "submitted", marks: {}, rev: 1, deleted: false, updatedAt: 1, updatedBy: "t1" });
+    await setDoc(doc(f, `classes/${C}/pace/${OLD}`), { easy: 1, right: 3, hard: 1, n: 5 });
+    await updateDoc(doc(f, "classes", C), { lastSubmittedSession: OLD });
+  });
+  await assertFails(vote(db.s1, "s1", OLD, "easy", true));
+  await assertSucceeds(getDoc(doc(db.t1, `classes/${C}/pace/${OLD}`)));
+});
+
+test("names on student writes must be the student's own; staff cannot rename themselves", async () => {
+  await assertFails(setDoc(doc(db.s1, `classes/${C}/help/spoof`), help("s1", { name: "s2" })));
+  await assertFails(setDoc(doc(db.s1, `classes/${C}/submissions/s1_p1`), sub("s1", { name: "s2" })));
+  await assertFails(updateDoc(doc(db.t1, "users/t1"), { name: "Ms Principal" }));
+  await assertSucceeds(updateDoc(doc(db.s1, "users/s1"), { name: "Ana B." }));
+});
+
+test("a project's creation time cannot be rewritten", async () => {
+  await assertFails(updateDoc(doc(db.t1, `classes/${C}/projects/p1`), { createdAt: new Date("2020-01-01") }));
+  await assertSucceeds(updateDoc(doc(db.t1, `classes/${C}/projects/p1`), { deleted: true }));
 });

@@ -6,8 +6,8 @@ What was verified before handover, how, and what was found. Re-run everything wi
 
 | Area | Result | Evidence |
 | --- | --- | --- |
-| Security rules | **VERIFIED with the Firebase emulator** | `npm run test:rules`: 41 tests, every role against every collection, all passing. Plus the checker's own 95 adversarial rule checks (round 1). |
-| Broken flows | Verified in a real browser | `npm run test:e2e`: 15 flows in Chromium, against the Auth and Firestore emulators, under the production CSP. |
+| Security rules | **VERIFIED with the Firebase emulator** | `npm run test:rules`: 46 tests, every role against every collection, all passing. Plus the checkers' own adversarial probes (95 in round 1, more in round 2). |
+| Broken flows | Verified in a real browser | `npm run test:e2e`: 16 flows in Chromium, against the Auth and Firestore emulators, under the production CSP. |
 | Python runtime | Verified | Unit tests run every curriculum snippet through the same code as the browser worker; e2e runs Python in Chromium under the CSP, including an infinite loop being stopped. |
 | Deploy readiness | Verified, except the real Google popup | `npm run build` passes `scripts/check-dist.js`. The popup cannot be tested here (see Not verified). |
 | Bloat | Checked | Main bundle 86.8 KB gzip, CSS 5.1 KB, admin pages 1.3 to 2.7 KB each (lazy), worker 0.8 KB. 3 runtime dependencies. |
@@ -18,14 +18,14 @@ What was verified before handover, how, and what was found. Re-run everything wi
 | Command | Result |
 | --- | --- |
 | `npm test` | 23 passed, 0 failed (curriculum validation, frozen levels, errata, rollback, Jakarta dates, CSV, Python runner, all 10 sample snippets) |
-| `npm run test:rules` | 41 passed, 0 failed |
-| `npm run test:e2e` | 15 passed, 0 failed |
+| `npm run test:rules` | 46 passed, 0 failed |
+| `npm run test:e2e` | 16 passed, 0 failed |
 | `npm run build` | `ok dist: 22 files`; largest file `pyodide/pyodide.asm.wasm` 9.6 MB (limit 25 MiB) |
 | `npm run design:check` | `ok builtbyjosef check clean`, `ok templates clean` |
 
 ### What the end-to-end flows cover
 
-1. An outsider Gmail account is turned away. 2. The allowlisted club account signs in. 3. Join: a wrong code gives an error; the right code (typed in lowercase) creates a request; the teacher approves; the student sees the class. 4. A student cannot open admin pages or another class. 5. Submit a project: pick an option, run Python, mark done; the teacher sees "Done". 6. Help: a run error, "Needs help" with a note; the teacher's queue lists the oldest request first and shows the error; the teacher answers; the student sees the answer. 7. An infinite loop is stopped after 5 s and Python works again. 8. Attendance: the flagged session shows on admin monitoring; the teacher marks an exception and submits; the history shows "Edit 1"; the admin flag clears. 9. Pace: a student answers once and cannot answer again; the teacher sees only the closed session with 5 answers. 10. Curriculum: a frozen-level change is rejected; a valid file's 11 snippets run and the broken one is reported; it publishes as version 2; an erratum that changes code is refused; a title fix is accepted; the class still sees version 1 of its pinned level and the new level 4. 11. Export: JSON has every dataset; CSV has the right header; the warning banner clears. 12. The logo appears only in Settings. 13. A 5 000-character error still saves with "Needs help". 14. Editing old attendance keeps a student who has since been removed. 15. No console errors or CSP violations during the whole run.
+1. An outsider Gmail account is turned away. 2. The allowlisted club account signs in. 3. Join: a wrong code gives an error; the right code (typed in lowercase) creates a request; the teacher approves; the student sees the class. 4. A student cannot open admin pages or another class. 5. Submit a project: pick an option, run Python, mark done; the teacher sees "Done". 6. Help: a run error, "Needs help" with a note; the teacher's queue lists the oldest request first and shows the error; the teacher answers; the student sees the answer. 7. An infinite loop is stopped after 5 s and Python works again. 8. Attendance: the flagged session shows on admin monitoring; the teacher marks an exception and submits; the history shows "Edit 1"; the admin flag clears. 9. Pace: a student answers once and cannot answer again; the teacher sees only the closed session with 5 answers. 10. Curriculum: a frozen-level change is rejected; a valid file's 11 snippets run and the broken one is reported; it publishes as version 2; an erratum that changes code is refused; a title fix is accepted; the class still sees version 1 of its pinned level and the new level 4. 11. Export: JSON has every dataset; CSV has the right header; the warning banner clears. 12. The logo appears only in Settings. 13. A 5 000-character error still saves with "Needs help". 14. Editing old attendance keeps a student who has since been removed. 15. If the teacher cancels a session after voting opened, students are told voting has closed. 16. No console errors or CSP violations during the whole run.
 
 ## Independent checker, round 1
 
@@ -55,7 +55,19 @@ A separate agent with no knowledge of the build reasoning was briefed to find fa
 
 ## Independent checker, round 2
 
-See the section added below once round 2 has run.
+A fresh agent re-attacked every round-1 fix and looked for regressions. It confirmed that C3, C4, C6 and C8 to C19 hold, and that C1 holds against a teacher acting alone. It found these:
+
+| # | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| R1 | major | An admin could move `lastSubmittedSession` backwards, reopen voting and isolate a single vote. | **Fixed.** For everyone, the field only moves forward and only to a session that really is submitted and not deleted. Rules test "nobody, not even an admin, can move the pace window back". |
+| R2 | minor | A teacher could close voting at any moment by naming a date that has no session. A teacher could isolate one vote with 4 accomplices. | **Fixed** for the first part (same rule as R1). **Accepted** for the accomplice case: no totals scheme survives 4 colluding voters. Recorded in D19. |
+| R3 | minor | `lastSubmittedSession: "9999-99-99"` would kill pace voting for good. | **Fixed** by R1's rule. Sessions also cannot be in the future (D34). |
+| R4 | minor | If the current session was cancelled or deleted, students saw "Try again" forever. | **Fixed.** The widget says answers have closed. Voting also closes after 7 days. New e2e test. |
+| R5 | minor | Teachers could rename themselves and so falsify `byName` and `answeredByName`. Students could put another name on help requests and submissions. | **Fixed.** Staff cannot rename themselves, and every name a student writes must match their profile (D33). Rules test. |
+| R6 | nit | A project's `createdAt` could be rewritten. Errata entries use the browser clock. | **Fixed** for `createdAt`. **Accepted** for errata time: errata are admin-only notes inside a list, and Firestore cannot put a server timestamp inside a list. |
+| R7 | minor | An attendance save from a stale tab could fail by trying to move `lastSubmittedSession` backwards. | **Fixed.** The class is re-read before deciding. |
+| R8 | nit | Two simultaneous first pace votes: one student saw an error. | **Fixed.** The app retries the update once. |
+| R9 | nit | The last session of a term never got pace totals. | **Fixed.** Voting closes after 7 days (D34). |
 
 ## Not verified here (founder to check after deploying)
 

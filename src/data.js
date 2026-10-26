@@ -6,7 +6,8 @@ import {
   writeBatch, increment, arrayUnion, serverTimestamp,
 } from "firebase/firestore/lite";
 import { db } from "./firebase.js";
-import { PACE_MIN_RESPONSES } from "./config.js";
+import { PACE_MIN_RESPONSES, PACE_VOTING_DAYS } from "./config.js";
+import { today, addDays } from "./time.js";
 
 const one = async (path) => {
   const snap = await getDoc(doc(db, path));
@@ -188,8 +189,10 @@ export async function saveSession(cls, date, me, { status, marks, deleted = fals
   const b = writeBatch(db);
   b.set(doc(db, `classes/${cls.id}/sessions/${date}`), { date, status, marks, rev, deleted, updatedAt: serverTimestamp(), updatedBy: me.id });
   b.set(doc(db, `classes/${cls.id}/sessions/${date}/history/${rev}`), { rev, at: serverTimestamp(), by: me.id, byName: me.name, status, marks, deleted });
-  // Students may give pace feedback for the most recent submitted session.
-  if (status === "submitted" && !deleted && date >= (cls.lastSubmittedSession || "")) {
+  // Students may give pace feedback for the most recent submitted session. Read the class
+  // fresh: another teacher may have moved it on, and the rules refuse moving it back.
+  const latest = (await getClass(cls.id)).lastSubmittedSession || "";
+  if (status === "submitted" && !deleted && date > latest) {
     b.update(doc(db, "classes", cls.id), { lastSubmittedSession: date });
   }
   await b.commit();
@@ -215,14 +218,19 @@ export async function vote(cid, date, uid, choice) {
     return b.commit();
   };
   // Students cannot read totals, so try "update" first and fall back to "create".
-  try { await attempt(false); } catch { await attempt(true); }
+  // If someone else created the totals in that same moment, the create fails: update once more.
+  try { await attempt(false); } catch {
+    try { await attempt(true); } catch { await attempt(false); }
+  }
 }
 
 // Teacher or admin: totals for sessions whose voting has closed (a later session was
 // submitted) and that have enough answers. The rules refuse every other totals document,
 // so each one is fetched on its own and refusals are skipped.
 export async function listPace(cls, sessions) {
-  const dates = sessions.filter((s) => s.status === "submitted" && !s.deleted && s.date < (cls.lastSubmittedSession || "")).map((s) => s.date);
+  const old = addDays(today(), -(PACE_VOTING_DAYS + 1));
+  const closed = (d) => d < (cls.lastSubmittedSession || "") || d < old;
+  const dates = sessions.filter((s) => s.status === "submitted" && !s.deleted && closed(s.date)).map((s) => s.date);
   const found = await Promise.all(dates.map((d) => one(`classes/${cls.id}/pace/${d}`).catch(() => null)));
   return found.filter((p) => p && p.n >= PACE_MIN_RESPONSES);
 }

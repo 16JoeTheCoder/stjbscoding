@@ -10,6 +10,10 @@ export const RUN_TIMEOUT_MS = 5000;
 // Must match the number 5 in firestore.rules (match /pace/{date}).
 export const PACE_MIN_RESPONSES = 5;
 
+// Students can answer the pace question for this many days after a session.
+// firestore.rules allows one extra day (8) for the Jakarta time difference.
+export const PACE_VOTING_DAYS = 7;
+
 // Admin dashboard flags help requests still open after this many days.
 export const HELP_STALE_DAYS = 3;
 

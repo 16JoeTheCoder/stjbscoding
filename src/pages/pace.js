@@ -10,16 +10,23 @@ const CHOICES = [["easy", "Too easy"], ["right", "About right"], ["hard", "Too h
 // Student widget. Votes are anonymous: only totals are stored (DECISIONS.md D19).
 export function paceWidget(ctx, cls) {
   const date = cls.lastSubmittedSession;
-  const state = (paceWidget.state[`${cls.id}/${date}`] ??= { done: false, error: "" });
+  const state = (paceWidget.state[`${cls.id}/${date}`] ??= { done: false, closed: false, error: "" });
   if (state.done) return html`<h3>Thanks</h3><p>Your answer was counted anonymously.</p>`;
+  if (state.closed) return html`<h3>How was the pace?</h3><p>Answers for this session have closed.</p>`;
   return html`
     <h3>How was the pace?</h3>
     <p>Session ${formatDate(date)}. Anonymous: nobody can see who answered.</p>
     <div class="row">
       ${CHOICES.map(([key, label]) => html`
         <button class="jy-btn jy-btn--ghost" @click=${(e) => busy(e, async () => {
-          await data.vote(cls.id, date, ctx.me.id, key);
-          state.done = true;
+          try {
+            await data.vote(cls.id, date, ctx.me.id, key);
+            state.done = true;
+          } catch (err) {
+            // Refused: the session was cancelled or deleted, or voting has closed.
+            if (!String(err.code).includes("permission-denied")) throw err;
+            state.closed = true;
+          }
           ctx.rerender();
         }, (msg) => { state.error = msg; ctx.rerender(); })}>${label}</button>`)}
     </div>
